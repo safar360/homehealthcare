@@ -2,7 +2,7 @@
 
 Flutter app (mobile + responsive web) for a home healthcare service, backed by a single Supabase
 project. See [architecture.md](architecture.md) for the solution design and cost model,
-[requirements.md](requirements.md) and [prd.md](prd.md) for scope.
+[supabase-setup.md](supabase-setup.md) for the step-by-step Supabase setup, [requirements.md](requirements.md) and [prd.md](prd.md) for scope.
 
 ## Patient home screen
 Every section is driven by the backend (`get_home_content` RPC) and ordered by the `home_sections`
