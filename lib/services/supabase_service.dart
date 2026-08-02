@@ -32,6 +32,7 @@ class SupabaseService {
       description: item['description'] ?? 'No description',
       duration: item['duration'] ?? 'As scheduled',
       price: double.tryParse(item['price']?.toString() ?? '0') ?? 0,
+      imageUrl: item['image_url']?.toString() ?? 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=900&q=80',
     )).toList();
   }
 
@@ -39,6 +40,8 @@ class SupabaseService {
     final body = jsonEncode({
       'service_id': request.serviceId,
       'patient_name': request.patientName,
+      'phone_number': request.phoneNumber,
+      'city': request.city,
       'address': request.address,
       'preferred_time': request.preferredTime,
       'note': request.note,
@@ -62,6 +65,8 @@ class SupabaseService {
       serviceId: data['service_id'].toString(),
       serviceName: data['service_name']?.toString() ?? 'Service',
       patientName: data['patient_name']?.toString() ?? request.patientName,
+      phoneNumber: data['phone_number']?.toString() ?? request.phoneNumber,
+      city: data['city']?.toString() ?? request.city,
       address: data['address']?.toString() ?? request.address,
       preferredTime: data['preferred_time']?.toString() ?? request.preferredTime,
       status: data['status']?.toString() ?? 'pending',
@@ -86,6 +91,8 @@ class SupabaseService {
       serviceId: item['service_id'].toString(),
       serviceName: item['service_name']?.toString() ?? 'Service',
       patientName: item['patient_name']?.toString() ?? 'Patient',
+      phoneNumber: item['phone_number']?.toString() ?? 'Pending',
+      city: item['city']?.toString() ?? 'Mumbai',
       address: item['address']?.toString() ?? 'Pending address',
       preferredTime: item['preferred_time']?.toString() ?? 'As soon as possible',
       status: item['status']?.toString() ?? 'pending',

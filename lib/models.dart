@@ -5,6 +5,7 @@ class ServiceItem {
   final String description;
   final String duration;
   final double price;
+  final String imageUrl;
 
   const ServiceItem({
     required this.id,
@@ -13,12 +14,15 @@ class ServiceItem {
     required this.description,
     required this.duration,
     required this.price,
+    required this.imageUrl,
   });
 }
 
 class OrderRequest {
   final String serviceId;
   final String patientName;
+  final String phoneNumber;
+  final String city;
   final String address;
   final String preferredTime;
   final String note;
@@ -26,6 +30,8 @@ class OrderRequest {
   const OrderRequest({
     required this.serviceId,
     required this.patientName,
+    required this.phoneNumber,
+    required this.city,
     required this.address,
     required this.preferredTime,
     required this.note,
@@ -37,6 +43,8 @@ class OrderRecord {
   final String serviceId;
   final String serviceName;
   final String patientName;
+  final String phoneNumber;
+  final String city;
   final String address;
   final String preferredTime;
   final String status;
@@ -48,6 +56,8 @@ class OrderRecord {
     required this.serviceId,
     required this.serviceName,
     required this.patientName,
+    required this.phoneNumber,
+    required this.city,
     required this.address,
     required this.preferredTime,
     required this.status,
