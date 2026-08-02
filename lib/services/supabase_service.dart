@@ -1,83 +1,70 @@
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
+
 import '../models.dart';
 
+/// Thin PostgREST client. The app talks straight to Supabase over HTTPS, so no
+/// application server has to be hosted or paid for.
 class SupabaseService {
-  SupabaseService({required this.url, required this.anonKey});
+  SupabaseService({required this.url, required this.anonKey, http.Client? client})
+    : _client = client ?? http.Client();
+
+  factory SupabaseService.fromEnvironment() => SupabaseService(
+    url: const String.fromEnvironment('SUPABASE_URL'),
+    anonKey: const String.fromEnvironment('SUPABASE_ANON_KEY'),
+  );
 
   final String url;
   final String anonKey;
+  final http.Client _client;
+
+  bool get isConfigured => url.isNotEmpty && anonKey.isNotEmpty;
 
   Map<String, String> get _headers => {
-        'Content-Type': 'application/json',
-        'apikey': anonKey,
-        'Authorization': 'Bearer $anonKey',
-      };
+    'Content-Type': 'application/json',
+    'apikey': anonKey,
+    'Authorization': 'Bearer $anonKey',
+  };
 
-  Future<List<ServiceItem>> fetchServices() async {
-    final response = await http.get(
-      Uri.parse('$url/rest/v1/services?select=*'),
+  /// One round trip for the whole home screen, served by `get_home_content`.
+  Future<HomeContent> fetchHomeContent({String? citySlug}) async {
+    final response = await _client.post(
+      Uri.parse('$url/rest/v1/rpc/get_home_content'),
       headers: _headers,
+      body: jsonEncode({'p_city_slug': citySlug}),
     );
 
     if (response.statusCode != 200) {
-      throw Exception('Unable to load services: ${response.body}');
+      throw Exception('Unable to load home content: ${response.body}');
     }
 
-    final data = jsonDecode(response.body) as List<dynamic>;
-    return data.map((item) => ServiceItem(
-      id: item['id'].toString(),
-      name: item['name'] ?? 'Service',
-      category: item['category'] ?? 'Care',
-      description: item['description'] ?? 'No description',
-      duration: item['duration'] ?? 'As scheduled',
-      price: double.tryParse(item['price']?.toString() ?? '0') ?? 0,
-      imageUrl: item['image_url']?.toString() ?? 'https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&fit=crop&w=900&q=80',
-    )).toList();
+    final data = jsonDecode(response.body);
+    if (data is! Map<String, dynamic>) {
+      throw Exception('Unexpected home content payload');
+    }
+    return HomeContent.fromJson(data);
   }
 
   Future<OrderRecord> createOrder(OrderRequest request) async {
-    final body = jsonEncode({
-      'service_id': request.serviceId,
-      'patient_name': request.patientName,
-      'phone_number': request.phoneNumber,
-      'city': request.city,
-      'address': request.address,
-      'preferred_time': request.preferredTime,
-      'note': request.note,
-      'status': 'pending',
-      'created_at': DateTime.now().toIso8601String(),
-    });
-
-    final response = await http.post(
+    final response = await _client.post(
       Uri.parse('$url/rest/v1/orders'),
-      headers: _headers,
-      body: body,
+      headers: {..._headers, 'Prefer': 'return=representation'},
+      body: jsonEncode(request.toJson()),
     );
 
     if (response.statusCode != 201 && response.statusCode != 200) {
       throw Exception('Unable to create order: ${response.body}');
     }
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return OrderRecord(
-      id: data['id'].toString(),
-      serviceId: data['service_id'].toString(),
-      serviceName: data['service_name']?.toString() ?? 'Service',
-      patientName: data['patient_name']?.toString() ?? request.patientName,
-      phoneNumber: data['phone_number']?.toString() ?? request.phoneNumber,
-      city: data['city']?.toString() ?? request.city,
-      address: data['address']?.toString() ?? request.address,
-      preferredTime: data['preferred_time']?.toString() ?? request.preferredTime,
-      status: data['status']?.toString() ?? 'pending',
-      note: data['note']?.toString() ?? request.note,
-      createdAt: DateTime.parse(data['created_at'] ?? DateTime.now().toIso8601String()),
-    );
+    final data = jsonDecode(response.body);
+    final row = data is List ? data.first : data;
+    return OrderRecord.fromJson(row as Map<String, dynamic>);
   }
 
   Future<List<OrderRecord>> fetchOrders() async {
-    final response = await http.get(
-      Uri.parse('$url/rest/v1/orders?select=*'),
+    final response = await _client.get(
+      Uri.parse('$url/rest/v1/orders?select=*&order=created_at.desc'),
       headers: _headers,
     );
 
@@ -86,18 +73,6 @@ class SupabaseService {
     }
 
     final data = jsonDecode(response.body) as List<dynamic>;
-    return data.map((item) => OrderRecord(
-      id: item['id'].toString(),
-      serviceId: item['service_id'].toString(),
-      serviceName: item['service_name']?.toString() ?? 'Service',
-      patientName: item['patient_name']?.toString() ?? 'Patient',
-      phoneNumber: item['phone_number']?.toString() ?? 'Pending',
-      city: item['city']?.toString() ?? 'Mumbai',
-      address: item['address']?.toString() ?? 'Pending address',
-      preferredTime: item['preferred_time']?.toString() ?? 'As soon as possible',
-      status: item['status']?.toString() ?? 'pending',
-      note: item['note']?.toString() ?? '',
-      createdAt: DateTime.parse(item['created_at'] ?? DateTime.now().toIso8601String()),
-    )).toList();
+    return data.whereType<Map<String, dynamic>>().map(OrderRecord.fromJson).toList(growable: false);
   }
 }

@@ -1,17 +1,41 @@
-# homehealthcare
+# Pari Home Healthcare
 
-A new Flutter project.
+Flutter app (mobile + responsive web) for a home healthcare service, backed by a single Supabase
+project. See [architecture.md](architecture.md) for the solution design and cost model,
+[requirements.md](requirements.md) and [prd.md](prd.md) for scope.
 
-## Getting Started
+## Patient home screen
+Every section is driven by the backend (`get_home_content` RPC) and ordered by the `home_sections`
+table: city picker with call/WhatsApp in the top bar, auto-scrolling hero banner carousel, quick
+actions, services with WhatsApp/Call/Order CTAs, customer reviews, other products, and social links.
+Ordering opens a form (name, phone, city, location, preferred time, note) and writes to `orders`.
 
-This project is a starting point for a Flutter application.
+## Backend setup
+1. Create a free Supabase project.
+2. Run `supabase-schema.sql` in the SQL editor. It creates the tables, RLS policies, the
+   `get_home_content` RPC and seed content, and is safe to re-run.
+3. Edit content (banners, services, products, reviews, cities, social links) from the Supabase table
+   editor - no app release is needed.
 
-A few resources to get you started if this is your first Flutter project:
+## Run the app
+```bash
+flutter pub get
+flutter run -d chrome \
+  --dart-define=SUPABASE_URL=https://<project-ref>.supabase.co \
+  --dart-define=SUPABASE_ANON_KEY=<anon-key>
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Without the `--dart-define` values the app renders bundled demo content that mirrors the SQL seed
+data, so the UI can be reviewed without a backend.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Build
+```bash
+flutter build web --release --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...
+flutter build appbundle --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...
+```
+
+## Checks
+```bash
+flutter analyze
+flutter test
+```
