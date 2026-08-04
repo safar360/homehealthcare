@@ -46,7 +46,7 @@ Families and patients need a simple way to track care visits, receive updates, a
 - Staff must be able to update visit status.
 
 ## 7. Technical Approach
-- Frontend: React web app for browser-based prototype, ready for future Flutter mobile expansion
+- Frontend: Flutter web app for browser-based prototype, ready for future Flutter mobile expansion
 - Backend: Supabase
 - Database: PostgreSQL
 - Auth: Supabase Auth
