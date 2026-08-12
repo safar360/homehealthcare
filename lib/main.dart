@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'data/demo_content.dart';
 import 'models.dart';
+import 'portal_page.dart';
 import 'services/supabase_service.dart';
 import 'utils/contact_launcher.dart';
 import 'widgets/hero_carousel.dart';
@@ -200,6 +201,13 @@ class _PatientHomePageState extends State<PatientHomePage> {
             tooltip: 'Call',
             onPressed: () => _call(_supportPhone),
             icon: const Icon(Icons.call),
+          ),
+          IconButton(
+            tooltip: 'Portal',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => PortalLoginPage(backend: widget.backend)),
+            ),
+            icon: const Icon(Icons.admin_panel_settings_outlined),
           ),
           const SizedBox(width: 4),
         ],

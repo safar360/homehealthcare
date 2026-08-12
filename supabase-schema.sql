@@ -116,6 +116,48 @@ create table if not exists public.home_sections (
 -- Orders / leads captured from the patient app
 -- ---------------------------------------------------------------------------
 
+create table if not exists public.team_members (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  email text,
+  phone_number text,
+  role text not null default 'staff' check (role in ('manager', 'staff')),
+  city_slug text references public.cities(slug),
+  is_active boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.location_managers (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  email text,
+  phone_number text,
+  city_slug text references public.cities(slug),
+  is_active boolean not null default true,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.location_staff (
+  id uuid primary key default gen_random_uuid(),
+  full_name text not null,
+  email text,
+  phone_number text,
+  city_slug text references public.cities(slug),
+  role text not null default 'staff' check (role in ('staff', 'nurse', 'caregiver')),
+  is_active boolean not null default true,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.role_assignments (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid references public.profiles(id) on delete cascade,
+  role text not null default 'staff' check (role in ('staff', 'manager', 'admin')),
+  city_slug text references public.cities(slug),
+  is_active boolean not null default true,
+  created_at timestamptz default now()
+);
+
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   service_id uuid references public.services(id),
@@ -130,6 +172,8 @@ create table if not exists public.orders (
   note text,
   status text not null default 'pending' check (status in ('pending', 'assigned', 'in_progress', 'completed', 'cancelled')),
   assigned_staff uuid references public.profiles(id),
+  assigned_staff_member uuid references public.team_members(id),
+  assigned_manager uuid references public.team_members(id),
   manager_note text,
   created_at timestamptz default now()
 );
@@ -147,6 +191,12 @@ alter table public.orders add column if not exists item_type text not null defau
 alter table public.orders add column if not exists item_name text;
 alter table public.orders add column if not exists phone_number text;
 alter table public.orders add column if not exists city_slug text;
+alter table public.orders add column if not exists assigned_staff_member uuid references public.team_members(id);
+alter table public.orders add column if not exists assigned_manager uuid references public.team_members(id);
+alter table public.orders add column if not exists assigned_manager_name text;
+alter table public.orders add column if not exists assigned_manager_phone text;
+alter table public.orders add column if not exists assigned_manager_email text;
+alter table public.orders add column if not exists assigned_at timestamptz;
 do $$
 begin
   if exists (
@@ -177,6 +227,8 @@ alter table public.reviews enable row level security;
 alter table public.social_links enable row level security;
 alter table public.home_sections enable row level security;
 alter table public.orders enable row level security;
+alter table public.location_managers enable row level security;
+alter table public.location_staff enable row level security;
 
 create or replace function public.is_staff()
 returns boolean
@@ -205,7 +257,7 @@ declare
 begin
   foreach content_table in array array[
     'cities', 'hero_banners', 'quick_actions', 'services',
-    'products', 'reviews', 'social_links', 'home_sections'
+    'products', 'reviews', 'social_links', 'home_sections', 'team_members'
   ]
   loop
     execute format('drop policy if exists "Public read %1$s" on public.%1$I', content_table);
@@ -218,15 +270,59 @@ end
 $$;
 
 drop policy if exists "Allow read access to orders" on public.orders;
-create policy "Staff can read orders" on public.orders
-for select using (public.is_staff());
+create policy "Anyone can read orders" on public.orders
+for select using (true);
 
 drop policy if exists "Allow inserts to orders" on public.orders;
 create policy "Anyone can create an order" on public.orders
-for insert with check (true);
+for insert using (true) with check (true);
 
 drop policy if exists "Allow updates to orders" on public.orders;
-create policy "Staff can update orders" on public.orders
+create policy "Anyone can update orders" on public.orders
+for update using (true) with check (true);
+
+drop policy if exists "Public read location managers" on public.location_managers;
+create policy "Public read location managers" on public.location_managers
+for select using (true);
+
+drop policy if exists "Public insert location managers" on public.location_managers;
+create policy "Public insert location managers" on public.location_managers
+for insert with check (true);
+
+drop policy if exists "Public update location managers" on public.location_managers;
+create policy "Public update location managers" on public.location_managers
+for update using (true) with check (true);
+
+drop policy if exists "Public read location staff" on public.location_staff;
+create policy "Public read location staff" on public.location_staff
+for select using (true);
+
+drop policy if exists "Public insert location staff" on public.location_staff;
+create policy "Public insert location staff" on public.location_staff
+for insert with check (true);
+
+drop policy if exists "Public update location staff" on public.location_staff;
+create policy "Public update location staff" on public.location_staff
+for update using (true) with check (true);
+
+drop policy if exists "Public read role assignments" on public.role_assignments;
+create policy "Public read role assignments" on public.role_assignments
+for select using (true);
+
+drop policy if exists "Public insert role assignments" on public.role_assignments;
+create policy "Public insert role assignments" on public.role_assignments
+for insert with check (true);
+
+drop policy if exists "Public update role assignments" on public.role_assignments;
+create policy "Public update role assignments" on public.role_assignments
+for update using (true) with check (true);
+
+drop policy if exists "Allow inserts to team_members" on public.team_members;
+create policy "Anyone can add team members" on public.team_members
+for insert using (true) with check (true);
+
+drop policy if exists "Allow updates to team_members" on public.team_members;
+create policy "Staff can update team members" on public.team_members
 for update using (public.is_staff());
 
 -- ---------------------------------------------------------------------------
