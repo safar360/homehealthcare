@@ -2,17 +2,22 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { supabase } from './lib/supabase';
 import {
   AVAILABILITY_STATUSES,
-  STAFF_ROLES,
   humanise,
+  slugify,
   splitList,
   type City,
   type DashboardSummary,
   type ManagerWithCount,
   type Staff,
-  type Transfer,
+  type StaffRoleRow,
 } from './lib/types';
 
-type Tab = 'dashboard' | 'managers' | 'staff' | 'transfers';
+// Transfers are hidden for now. The transfer_staff RPCs and the audit table are
+// still in the schema, so re-enabling is a UI change only. Until then an admin
+// reassigns a staff member through Edit, which does NOT write an audit row.
+type Tab = 'dashboard' | 'managers' | 'staff' | 'roles' | 'cities';
+
+const TABS: Tab[] = ['dashboard', 'managers', 'staff', 'roles', 'cities'];
 
 type ManagerForm = {
   full_name: string;
@@ -35,25 +40,26 @@ type StaffForm = {
   availability_status: string;
 };
 
-const emptyManagerForm: ManagerForm = {
-  full_name: '',
-  email: '',
-  phone_number: '',
-  city_slug: '',
-  managed_locations: '',
+type RoleForm = { slug: string; label: string; description: string; sort_order: string };
+type CityForm = {
+  slug: string;
+  name: string;
+  support_phone: string;
+  whatsapp_number: string;
+  sort_order: string;
 };
 
+const emptyManagerForm: ManagerForm = {
+  full_name: '', email: '', phone_number: '', city_slug: '', managed_locations: '',
+};
 const emptyStaffForm: StaffForm = {
-  full_name: '',
-  email: '',
-  phone_number: '',
-  city_slug: '',
-  staff_role: 'assistant',
-  assigned_manager_id: '',
-  assigned_location: '',
-  qualifications: '',
-  experience_years: '0',
-  availability_status: 'available',
+  full_name: '', email: '', phone_number: '', city_slug: '', staff_role: '',
+  assigned_manager_id: '', assigned_location: '', qualifications: '',
+  experience_years: '0', availability_status: 'available',
+};
+const emptyRoleForm: RoleForm = { slug: '', label: '', description: '', sort_order: '10' };
+const emptyCityForm: CityForm = {
+  slug: '', name: '', support_phone: '', whatsapp_number: '', sort_order: '10',
 };
 
 export default function AdminPortal() {
@@ -61,8 +67,8 @@ export default function AdminPortal() {
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [managers, setManagers] = useState<ManagerWithCount[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [cities, setCities] = useState<City[]>([]);
+  const [roles, setRoles] = useState<StaffRoleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -76,34 +82,32 @@ export default function AdminPortal() {
   const [managerEditId, setManagerEditId] = useState<string | null>(null);
   const [staffForm, setStaffForm] = useState<StaffForm | null>(null);
   const [staffEditId, setStaffEditId] = useState<string | null>(null);
-  const [transferFor, setTransferFor] = useState<Staff | null>(null);
+  const [roleForm, setRoleForm] = useState<RoleForm | null>(null);
+  const [roleEditSlug, setRoleEditSlug] = useState<string | null>(null);
+  const [cityForm, setCityForm] = useState<CityForm | null>(null);
+  const [cityEditSlug, setCityEditSlug] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    const [citiesRes, dashRes, managersRes, staffRes, transfersRes] = await Promise.all([
-      supabase.from('cities').select('slug, name').eq('is_active', true).order('sort_order'),
+    const [citiesRes, rolesRes, dashRes, managersRes, staffRes] = await Promise.all([
+      supabase.from('cities').select('*').order('sort_order'),
+      supabase.from('staff_roles').select('*').order('sort_order'),
       supabase.rpc('get_admin_dashboard_summary'),
       supabase.rpc('get_managers_with_staff_count'),
       supabase.from('location_staff').select('*').eq('is_active', true).order('full_name'),
-      supabase
-        .from('staff_transfer_history')
-        .select('*')
-        .order('transferred_at', { ascending: false })
-        .limit(50),
     ]);
 
-    // supabase-js resolves with an { error } field rather than throwing, so each
-    // response has to be checked explicitly.
-    const failure = [citiesRes, dashRes, managersRes, staffRes, transfersRes].find((r) => r.error);
+    // supabase-js resolves with an { error } field rather than throwing.
+    const failure = [citiesRes, rolesRes, dashRes, managersRes, staffRes].find((r) => r.error);
     if (failure?.error) setError(failure.error.message);
 
     setCities((citiesRes.data as City[]) ?? []);
+    setRoles((rolesRes.data as StaffRoleRow[]) ?? []);
     setDashboard((dashRes.data as DashboardSummary) ?? null);
     setManagers((managersRes.data as ManagerWithCount[]) ?? []);
     setStaff((staffRes.data as Staff[]) ?? []);
-    setTransfers((transfersRes.data as Transfer[]) ?? []);
     setLoading(false);
   }, []);
 
@@ -112,10 +116,24 @@ export default function AdminPortal() {
   }, [load]);
 
   const managerNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    managers.forEach((m) => map.set(m.id, m.full_name));
-    return map;
+    const m = new Map<string, string>();
+    managers.forEach((x) => m.set(x.id, x.full_name));
+    return m;
   }, [managers]);
+
+  const cityNameBySlug = useMemo(() => {
+    const m = new Map<string, string>();
+    cities.forEach((c) => m.set(c.slug, c.name));
+    return m;
+  }, [cities]);
+
+  const roleLabelBySlug = useMemo(() => {
+    const m = new Map<string, string>();
+    roles.forEach((r) => m.set(r.slug, r.label));
+    return m;
+  }, [roles]);
+
+  const activeRoles = useMemo(() => roles.filter((r) => r.is_active), [roles]);
 
   const filteredStaff = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -126,7 +144,8 @@ export default function AdminPortal() {
       if (!term) return true;
       return (
         s.full_name.toLowerCase().includes(term) ||
-        (s.email ?? '').toLowerCase().includes(term)
+        (s.email ?? '').toLowerCase().includes(term) ||
+        (s.assigned_location ?? '').toLowerCase().includes(term)
       );
     });
   }, [staff, filterCity, filterRole, filterStatus, search]);
@@ -137,7 +156,6 @@ export default function AdminPortal() {
       setError('A manager needs at least a name and a city.');
       return;
     }
-
     const payload = {
       full_name: managerForm.full_name.trim(),
       email: managerForm.email.trim() || null,
@@ -146,29 +164,21 @@ export default function AdminPortal() {
       managed_locations: splitList(managerForm.managed_locations),
       updated_at: new Date().toISOString(),
     };
-
-    const { error: saveError } = managerEditId
+    const { error: e } = managerEditId
       ? await supabase.from('location_managers').update(payload).eq('id', managerEditId)
       : await supabase.from('location_managers').insert([payload]);
-
-    if (saveError) {
-      setError(saveError.message);
-      return;
-    }
-
-    setManagerForm(null);
-    setManagerEditId(null);
+    if (e) { setError(e.message); return; }
+    setManagerForm(null); setManagerEditId(null);
     setNotice(managerEditId ? 'Manager updated.' : 'Manager added.');
     await load();
   };
 
   const saveStaff = async () => {
     if (!staffForm) return;
-    if (!staffForm.full_name.trim() || !staffForm.city_slug) {
-      setError('A staff member needs at least a name and a city.');
+    if (!staffForm.full_name.trim() || !staffForm.city_slug || !staffForm.staff_role) {
+      setError('A staff member needs a name, a city and a role.');
       return;
     }
-
     const payload = {
       full_name: staffForm.full_name.trim(),
       email: staffForm.email.trim() || null,
@@ -182,42 +192,91 @@ export default function AdminPortal() {
       availability_status: staffForm.availability_status,
       updated_at: new Date().toISOString(),
     };
-
-    const { error: saveError } = staffEditId
+    const { error: e } = staffEditId
       ? await supabase.from('location_staff').update(payload).eq('id', staffEditId)
       : await supabase.from('location_staff').insert([payload]);
-
-    if (saveError) {
-      setError(saveError.message);
-      return;
-    }
-
-    setStaffForm(null);
-    setStaffEditId(null);
+    if (e) { setError(e.message); return; }
+    setStaffForm(null); setStaffEditId(null);
     setNotice(staffEditId ? 'Staff member updated.' : 'Staff member added.');
     await load();
   };
 
-  const deactivate = async (table: 'location_managers' | 'location_staff', id: string, label: string) => {
-    if (!window.confirm(`Deactivate ${label}? The record is kept for the audit trail.`)) return;
+  const saveRole = async () => {
+    if (!roleForm) return;
+    const label = roleForm.label.trim();
+    if (!label) { setError('A role needs a name.'); return; }
+    const slug = roleEditSlug ?? (roleForm.slug.trim() || slugify(label));
+    if (!slug) { setError('Could not derive an identifier from that name.'); return; }
 
-    const { error: delError } = await supabase
+    const payload = {
+      slug,
+      label,
+      description: roleForm.description.trim() || null,
+      sort_order: Number(roleForm.sort_order) || 0,
+    };
+    const { error: e } = roleEditSlug
+      ? await supabase.from('staff_roles').update(payload).eq('slug', roleEditSlug)
+      : await supabase.from('staff_roles').insert([payload]);
+    if (e) { setError(e.message); return; }
+    setRoleForm(null); setRoleEditSlug(null);
+    setNotice(roleEditSlug ? 'Role updated.' : `Role "${label}" added.`);
+    await load();
+  };
+
+  const saveCity = async () => {
+    if (!cityForm) return;
+    const name = cityForm.name.trim();
+    if (!name) { setError('A city needs a name.'); return; }
+    const slug = cityEditSlug ?? (cityForm.slug.trim() || slugify(name.split(',')[0]));
+    if (!slug) { setError('Could not derive an identifier from that name.'); return; }
+
+    const payload = {
+      slug,
+      name,
+      support_phone: cityForm.support_phone.trim() || null,
+      whatsapp_number: cityForm.whatsapp_number.trim() || null,
+      sort_order: Number(cityForm.sort_order) || 0,
+    };
+    const { error: e } = cityEditSlug
+      ? await supabase.from('cities').update(payload).eq('slug', cityEditSlug)
+      : await supabase.from('cities').insert([payload]);
+    if (e) { setError(e.message); return; }
+    setCityForm(null); setCityEditSlug(null);
+    setNotice(cityEditSlug ? 'City updated.' : `${name} added.`);
+    await load();
+  };
+
+  const deactivate = async (
+    table: 'location_managers' | 'location_staff',
+    id: string,
+    label: string
+  ) => {
+    if (!window.confirm(`Deactivate ${label}? The record is kept for the audit trail.`)) return;
+    const { error: e } = await supabase
       .from(table)
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq('id', id);
-
-    if (delError) {
-      setError(delError.message);
-      return;
-    }
+    if (e) { setError(e.message); return; }
     setNotice(`${label} deactivated.`);
+    await load();
+  };
+
+  const toggleActive = async (
+    table: 'staff_roles' | 'cities',
+    slug: string,
+    next: boolean,
+    label: string
+  ) => {
+    const { error: e } = await supabase.from(table).update({ is_active: next }).eq('slug', slug);
+    if (e) { setError(e.message); return; }
+    setNotice(`${label} ${next ? 'activated' : 'deactivated'}.`);
     await load();
   };
 
   return (
     <>
       <nav className="tabs">
-        {(['dashboard', 'managers', 'staff', 'transfers'] as Tab[]).map((key) => (
+        {TABS.map((key) => (
           <button
             key={key}
             type="button"
@@ -227,6 +286,8 @@ export default function AdminPortal() {
             {humanise(key)}
             {key === 'managers' && ` (${managers.length})`}
             {key === 'staff' && ` (${staff.length})`}
+            {key === 'roles' && ` (${activeRoles.length})`}
+            {key === 'cities' && ` (${cities.filter((c) => c.is_active !== false).length})`}
           </button>
         ))}
       </nav>
@@ -234,34 +295,94 @@ export default function AdminPortal() {
       {error && (
         <div className="banner banner-error">
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)}>
-            Dismiss
-          </button>
+          <button type="button" onClick={() => setError(null)}>Dismiss</button>
         </div>
       )}
       {notice && (
         <div className="banner banner-success">
           <span>{notice}</span>
-          <button type="button" onClick={() => setNotice(null)}>
-            Dismiss
-          </button>
+          <button type="button" onClick={() => setNotice(null)}>Dismiss</button>
         </div>
       )}
 
       {loading && <p className="muted">Loading…</p>}
 
-      {!loading && tab === 'dashboard' && (
-        <div className="dashboard-grid">
-          <StatCard label="Managers" value={dashboard?.total_managers ?? 0} />
-          <StatCard label="Staff" value={dashboard?.total_staff ?? 0} />
-          <StatCard label="Active cities" value={dashboard?.total_cities ?? 0} />
-          <BreakdownCard title="Staff by role" data={dashboard?.staff_by_role} />
-          <BreakdownCard title="Staff by city" data={dashboard?.staff_by_city} />
-          <BreakdownCard title="Managers by city" data={dashboard?.managers_by_city} />
-          <BreakdownCard title="Orders by status" data={dashboard?.orders_by_status} />
-        </div>
+      {/* ------------------------------------------------------- dashboard */}
+      {!loading && tab === 'dashboard' && dashboard && (
+        <>
+          <div className="dashboard-grid">
+            <StatCard label="Cities" value={dashboard.total_cities} />
+            <StatCard label="Managers" value={dashboard.total_managers} />
+            <StatCard label="Staff" value={dashboard.total_staff} />
+            <StatCard label="Roles" value={dashboard.total_roles} />
+            <StatCard label="Orders" value={dashboard.total_orders} />
+            <StatCard
+              label="Unassigned staff"
+              value={dashboard.unassigned_staff}
+              tone={dashboard.unassigned_staff > 0 ? 'warn' : undefined}
+            />
+          </div>
+
+          {(dashboard.cities_without_manager?.length ?? 0) > 0 && (
+            <div className="banner banner-warn">
+              <span>
+                No manager covering: <strong>{dashboard.cities_without_manager.join(', ')}</strong>
+              </span>
+            </div>
+          )}
+
+          <section className="content-section">
+            <h2>Coverage by location</h2>
+            <p className="muted">
+              Every active city, the team covering it, and the areas staff are assigned to.
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>City</th>
+                    <th>Managers</th>
+                    <th>Staff</th>
+                    <th>Available</th>
+                    <th>Areas covered</th>
+                    <th>Orders</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(dashboard.by_location ?? []).map((row) => (
+                    <tr key={row.slug}>
+                      <td><strong>{row.city}</strong></td>
+                      <td className={row.managers === 0 ? 'cell-warn' : ''}>{row.managers}</td>
+                      <td>{row.staff}</td>
+                      <td>{row.available}</td>
+                      <td>
+                        <div className="qualifications">
+                          {row.areas.map((a) => <span key={a} className="qual-tag">{a}</span>)}
+                          {row.areas.length === 0 && <span className="muted">—</span>}
+                        </div>
+                      </td>
+                      <td>{row.orders}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {(dashboard.by_location?.length ?? 0) === 0 && (
+                <div className="no-data">No active cities yet.</div>
+              )}
+            </div>
+          </section>
+
+          <div className="dashboard-grid">
+            <BreakdownCard title="Staff by role" data={dashboard.staff_by_role} />
+            <BreakdownCard title="Staff by city" data={dashboard.staff_by_city} />
+            <BreakdownCard title="Staff by availability" data={dashboard.staff_by_availability} />
+            <BreakdownCard title="Managers by city" data={dashboard.managers_by_city} />
+            <BreakdownCard title="Orders by status" data={dashboard.orders_by_status} />
+          </div>
+        </>
       )}
 
+      {/* -------------------------------------------------------- managers */}
       {!loading && tab === 'managers' && (
         <section className="content-section">
           <div className="section-header">
@@ -269,26 +390,17 @@ export default function AdminPortal() {
             <button
               className="btn-primary"
               type="button"
-              onClick={() => {
-                setManagerEditId(null);
-                setManagerForm({ ...emptyManagerForm });
-              }}
+              onClick={() => { setManagerEditId(null); setManagerForm({ ...emptyManagerForm }); }}
             >
               + Add manager
             </button>
           </div>
-
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>City</th>
-                  <th>Locations</th>
-                  <th>Staff</th>
-                  <th>Actions</th>
+                  <th>Name</th><th>Email</th><th>Phone</th><th>City</th>
+                  <th>Areas</th><th>Staff</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -297,7 +409,7 @@ export default function AdminPortal() {
                     <td>{m.full_name}</td>
                     <td>{m.email ?? '—'}</td>
                     <td>{m.phone_number ?? '—'}</td>
-                    <td>{m.city_slug ?? '—'}</td>
+                    <td>{cityNameBySlug.get(m.city_slug ?? '') ?? m.city_slug ?? '—'}</td>
                     <td>{m.managed_locations.join(', ') || '—'}</td>
                     <td>{m.staff_count}</td>
                     <td className="actions">
@@ -314,16 +426,12 @@ export default function AdminPortal() {
                             managed_locations: m.managed_locations.join(', '),
                           });
                         }}
-                      >
-                        Edit
-                      </button>
+                      >Edit</button>
                       <button
                         className="btn-danger-small"
                         type="button"
                         onClick={() => deactivate('location_managers', m.id, m.full_name)}
-                      >
-                        Deactivate
-                      </button>
+                      >Deactivate</button>
                     </td>
                   </tr>
                 ))}
@@ -334,6 +442,7 @@ export default function AdminPortal() {
         </section>
       )}
 
+      {/* ----------------------------------------------------------- staff */}
       {!loading && tab === 'staff' && (
         <section className="content-section">
           <div className="section-header">
@@ -343,7 +452,7 @@ export default function AdminPortal() {
               type="button"
               onClick={() => {
                 setStaffEditId(null);
-                setStaffForm({ ...emptyStaffForm });
+                setStaffForm({ ...emptyStaffForm, staff_role: activeRoles[0]?.slug ?? '' });
               }}
             >
               + Add staff
@@ -352,62 +461,34 @@ export default function AdminPortal() {
 
           <div className="filters">
             <input
-              type="search"
-              placeholder="Search name or email…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="filter-input"
+              type="search" className="filter-input"
+              placeholder="Search name, email or area…"
+              value={search} onChange={(e) => setSearch(e.target.value)}
             />
-            <select value={filterCity} onChange={(e) => setFilterCity(e.target.value)} className="filter-select">
+            <select className="filter-select" value={filterCity} onChange={(e) => setFilterCity(e.target.value)}>
               <option value="">All cities</option>
-              {cities.map((c) => (
-                <option key={c.slug} value={c.slug}>
-                  {c.name}
-                </option>
-              ))}
+              {cities.map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
             </select>
-            <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="filter-select">
+            <select className="filter-select" value={filterRole} onChange={(e) => setFilterRole(e.target.value)}>
               <option value="">All roles</option>
-              {STAFF_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {humanise(r)}
-                </option>
-              ))}
+              {roles.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
             </select>
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select">
+            <select className="filter-select" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
               <option value="">All statuses</option>
-              {AVAILABILITY_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {humanise(s)}
-                </option>
-              ))}
+              {AVAILABILITY_STATUSES.map((s) => <option key={s} value={s}>{humanise(s)}</option>)}
             </select>
             <button
-              className="btn-secondary"
-              type="button"
-              onClick={() => {
-                setSearch('');
-                setFilterCity('');
-                setFilterRole('');
-                setFilterStatus('');
-              }}
-            >
-              Clear
-            </button>
+              className="btn-secondary" type="button"
+              onClick={() => { setSearch(''); setFilterCity(''); setFilterRole(''); setFilterStatus(''); }}
+            >Clear</button>
           </div>
 
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Contact</th>
-                  <th>Role</th>
-                  <th>City</th>
-                  <th>Manager</th>
-                  <th>Status</th>
-                  <th>Qualifications</th>
-                  <th>Actions</th>
+                  <th>Name</th><th>Contact</th><th>Role</th><th>City</th>
+                  <th>Area</th><th>Manager</th><th>Status</th><th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -415,38 +496,29 @@ export default function AdminPortal() {
                   <tr key={s.id}>
                     <td>{s.full_name}</td>
                     <td>
-                      {s.email ?? '—'}
-                      <br />
+                      {s.email ?? '—'}<br />
                       <span className="muted">{s.phone_number ?? ''}</span>
                     </td>
                     <td>
-                      <span className="badge badge-role">{humanise(s.staff_role)}</span>
+                      <span className="badge badge-role">
+                        {roleLabelBySlug.get(s.staff_role) ?? humanise(s.staff_role)}
+                      </span>
                     </td>
-                    <td>{s.city_slug ?? '—'}</td>
+                    <td>{cityNameBySlug.get(s.city_slug ?? '') ?? s.city_slug ?? '—'}</td>
+                    <td>{s.assigned_location ?? <span className="muted">—</span>}</td>
                     <td>
                       {s.assigned_manager_id
                         ? managerNameById.get(s.assigned_manager_id) ?? 'Unknown'
-                        : <span className="muted">Unassigned</span>}
+                        : <span className="cell-warn">Unassigned</span>}
                     </td>
                     <td>
                       <span className={`status ${s.availability_status === 'available' ? 'active' : 'inactive'}`}>
                         {humanise(s.availability_status)}
                       </span>
                     </td>
-                    <td>
-                      <div className="qualifications">
-                        {s.qualifications.map((q) => (
-                          <span key={q} className="qual-tag">
-                            {q}
-                          </span>
-                        ))}
-                        {s.qualifications.length === 0 && '—'}
-                      </div>
-                    </td>
                     <td className="actions">
                       <button
-                        className="btn-small"
-                        type="button"
+                        className="btn-small" type="button"
                         onClick={() => {
                           setStaffEditId(s.id);
                           setStaffForm({
@@ -462,19 +534,11 @@ export default function AdminPortal() {
                             availability_status: s.availability_status,
                           });
                         }}
-                      >
-                        Edit
-                      </button>
-                      <button className="btn-small" type="button" onClick={() => setTransferFor(s)}>
-                        Transfer
-                      </button>
+                      >Edit</button>
                       <button
-                        className="btn-danger-small"
-                        type="button"
+                        className="btn-danger-small" type="button"
                         onClick={() => deactivate('location_staff', s.id, s.full_name)}
-                      >
-                        Deactivate
-                      </button>
+                      >Deactivate</button>
                     </td>
                   </tr>
                 ))}
@@ -489,218 +553,305 @@ export default function AdminPortal() {
         </section>
       )}
 
-      {!loading && tab === 'transfers' && (
+      {/* ----------------------------------------------------------- roles */}
+      {!loading && tab === 'roles' && (
         <section className="content-section">
-          <h2>Transfer history</h2>
-          <p className="muted">The 50 most recent staff movements.</p>
+          <div className="section-header">
+            <h2>Staff roles</h2>
+            <button
+              className="btn-primary" type="button"
+              onClick={() => { setRoleEditSlug(null); setRoleForm({ ...emptyRoleForm }); }}
+            >+ Add role</button>
+          </div>
+          <p className="muted">
+            Roles available when adding a staff member. Deactivating one hides it from new
+            entries; staff already holding it keep it.
+          </p>
           <div className="table-wrap">
             <table>
               <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Staff</th>
-                  <th>From</th>
-                  <th>To</th>
-                  <th>Reason</th>
-                </tr>
+                <tr><th>Role</th><th>Identifier</th><th>Description</th><th>In use</th><th>Status</th><th>Actions</th></tr>
               </thead>
               <tbody>
-                {transfers.map((t) => {
-                  const staffName = staff.find((s) => s.id === t.staff_id)?.full_name ?? t.staff_id;
-                  const from = t.from_manager_id ? managerNameById.get(t.from_manager_id) : null;
-                  const to = t.to_manager_id ? managerNameById.get(t.to_manager_id) : null;
+                {roles.map((r) => {
+                  const inUse = staff.filter((s) => s.staff_role === r.slug).length;
                   return (
-                    <tr key={t.id}>
-                      <td>{new Date(t.transferred_at).toLocaleString()}</td>
-                      <td>{staffName}</td>
+                    <tr key={r.slug}>
+                      <td><strong>{r.label}</strong></td>
+                      <td><code>{r.slug}</code></td>
+                      <td>{r.description ?? <span className="muted">—</span>}</td>
+                      <td>{inUse}</td>
                       <td>
-                        {from ?? 'Unassigned'}
-                        <br />
-                        <span className="muted">{t.from_city ?? '—'}</span>
+                        <span className={`status ${r.is_active ? 'active' : 'inactive'}`}>
+                          {r.is_active ? 'Active' : 'Inactive'}
+                        </span>
                       </td>
-                      <td>
-                        {to ?? 'Unassigned'}
-                        <br />
-                        <span className="muted">{t.to_city ?? '—'}</span>
+                      <td className="actions">
+                        <button
+                          className="btn-small" type="button"
+                          onClick={() => {
+                            setRoleEditSlug(r.slug);
+                            setRoleForm({
+                              slug: r.slug, label: r.label,
+                              description: r.description ?? '',
+                              sort_order: String(r.sort_order ?? 0),
+                            });
+                          }}
+                        >Edit</button>
+                        <button
+                          className={r.is_active ? 'btn-danger-small' : 'btn-small'}
+                          type="button"
+                          onClick={() => toggleActive('staff_roles', r.slug, !r.is_active, r.label)}
+                        >{r.is_active ? 'Deactivate' : 'Activate'}</button>
                       </td>
-                      <td>{t.reason ?? '—'}</td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-            {transfers.length === 0 && <div className="no-data">No transfers recorded yet.</div>}
+            {roles.length === 0 && <div className="no-data">No roles yet.</div>}
           </div>
         </section>
       )}
 
+      {/* ---------------------------------------------------------- cities */}
+      {!loading && tab === 'cities' && (
+        <section className="content-section">
+          <div className="section-header">
+            <h2>Cities</h2>
+            <button
+              className="btn-primary" type="button"
+              onClick={() => { setCityEditSlug(null); setCityForm({ ...emptyCityForm }); }}
+            >+ Add city</button>
+          </div>
+          <p className="muted">
+            Cities the service operates in. These drive the patient app's city picker as well as
+            manager and staff assignment.
+          </p>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>City</th><th>Identifier</th><th>Support phone</th><th>WhatsApp</th><th>Managers</th><th>Staff</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {cities.map((c) => (
+                  <tr key={c.slug}>
+                    <td><strong>{c.name}</strong></td>
+                    <td><code>{c.slug}</code></td>
+                    <td>{c.support_phone ?? '—'}</td>
+                    <td>{c.whatsapp_number ?? '—'}</td>
+                    <td>{managers.filter((m) => m.city_slug === c.slug).length}</td>
+                    <td>{staff.filter((s) => s.city_slug === c.slug).length}</td>
+                    <td>
+                      <span className={`status ${c.is_active !== false ? 'active' : 'inactive'}`}>
+                        {c.is_active !== false ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="actions">
+                      <button
+                        className="btn-small" type="button"
+                        onClick={() => {
+                          setCityEditSlug(c.slug);
+                          setCityForm({
+                            slug: c.slug, name: c.name,
+                            support_phone: c.support_phone ?? '',
+                            whatsapp_number: c.whatsapp_number ?? '',
+                            sort_order: String(c.sort_order ?? 0),
+                          });
+                        }}
+                      >Edit</button>
+                      <button
+                        className={c.is_active !== false ? 'btn-danger-small' : 'btn-small'}
+                        type="button"
+                        onClick={() => toggleActive('cities', c.slug, c.is_active === false, c.name)}
+                      >{c.is_active !== false ? 'Deactivate' : 'Activate'}</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {cities.length === 0 && <div className="no-data">No cities yet.</div>}
+          </div>
+        </section>
+      )}
+
+      {/* ---------------------------------------------------------- modals */}
       {managerForm && (
-        <Modal title={managerEditId ? 'Edit manager' : 'Add manager'} onClose={() => setManagerForm(null)} onSave={saveManager}>
+        <Modal
+          title={managerEditId ? 'Edit manager' : 'Add manager'}
+          onClose={() => setManagerForm(null)}
+          onSave={saveManager}
+        >
           <Field label="Full name" required>
-            <input
-              value={managerForm.full_name}
-              onChange={(e) => setManagerForm({ ...managerForm, full_name: e.target.value })}
-            />
+            <input value={managerForm.full_name}
+              onChange={(e) => setManagerForm({ ...managerForm, full_name: e.target.value })} />
           </Field>
           <Field label="Email">
-            <input
-              type="email"
-              value={managerForm.email}
-              onChange={(e) => setManagerForm({ ...managerForm, email: e.target.value })}
-            />
+            <input type="email" value={managerForm.email}
+              onChange={(e) => setManagerForm({ ...managerForm, email: e.target.value })} />
           </Field>
           <Field label="Phone">
-            <input
-              type="tel"
-              value={managerForm.phone_number}
-              onChange={(e) => setManagerForm({ ...managerForm, phone_number: e.target.value })}
-            />
+            <input type="tel" value={managerForm.phone_number}
+              onChange={(e) => setManagerForm({ ...managerForm, phone_number: e.target.value })} />
           </Field>
           <Field label="City" required>
-            <select
-              value={managerForm.city_slug}
-              onChange={(e) => setManagerForm({ ...managerForm, city_slug: e.target.value })}
-            >
+            <select value={managerForm.city_slug}
+              onChange={(e) => setManagerForm({ ...managerForm, city_slug: e.target.value })}>
               <option value="">Select a city</option>
-              {cities.map((c) => (
-                <option key={c.slug} value={c.slug}>
-                  {c.name}
-                </option>
-              ))}
+              {cities.filter((c) => c.is_active !== false)
+                .map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
             </select>
           </Field>
-          <Field label="Managed locations (comma-separated)">
-            <input
-              value={managerForm.managed_locations}
-              onChange={(e) => setManagerForm({ ...managerForm, managed_locations: e.target.value })}
-              placeholder="North Center, South Center"
-            />
+          <Field label="Areas covered (comma-separated)">
+            <input value={managerForm.managed_locations}
+              placeholder="Arera Colony, MP Nagar"
+              onChange={(e) => setManagerForm({ ...managerForm, managed_locations: e.target.value })} />
           </Field>
         </Modal>
       )}
 
       {staffForm && (
-        <Modal title={staffEditId ? 'Edit staff member' : 'Add staff member'} onClose={() => setStaffForm(null)} onSave={saveStaff}>
+        <Modal
+          title={staffEditId ? 'Edit staff member' : 'Add staff member'}
+          onClose={() => setStaffForm(null)}
+          onSave={saveStaff}
+        >
           <Field label="Full name" required>
-            <input
-              value={staffForm.full_name}
-              onChange={(e) => setStaffForm({ ...staffForm, full_name: e.target.value })}
-            />
+            <input value={staffForm.full_name}
+              onChange={(e) => setStaffForm({ ...staffForm, full_name: e.target.value })} />
           </Field>
           <Field label="Email">
-            <input
-              type="email"
-              value={staffForm.email}
-              onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })}
-            />
+            <input type="email" value={staffForm.email}
+              onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} />
           </Field>
           <Field label="Phone">
-            <input
-              type="tel"
-              value={staffForm.phone_number}
-              onChange={(e) => setStaffForm({ ...staffForm, phone_number: e.target.value })}
-            />
+            <input type="tel" value={staffForm.phone_number}
+              onChange={(e) => setStaffForm({ ...staffForm, phone_number: e.target.value })} />
           </Field>
           <Field label="City" required>
-            <select
-              value={staffForm.city_slug}
-              onChange={(e) => setStaffForm({ ...staffForm, city_slug: e.target.value })}
-            >
+            <select value={staffForm.city_slug}
+              onChange={(e) => setStaffForm({ ...staffForm, city_slug: e.target.value })}>
               <option value="">Select a city</option>
-              {cities.map((c) => (
-                <option key={c.slug} value={c.slug}>
-                  {c.name}
-                </option>
-              ))}
+              {cities.filter((c) => c.is_active !== false)
+                .map((c) => <option key={c.slug} value={c.slug}>{c.name}</option>)}
             </select>
           </Field>
-          <Field label="Role">
-            <select
-              value={staffForm.staff_role}
-              onChange={(e) => setStaffForm({ ...staffForm, staff_role: e.target.value })}
-            >
-              {STAFF_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {humanise(r)}
-                </option>
-              ))}
+          <Field label="Role" required>
+            <select value={staffForm.staff_role}
+              onChange={(e) => setStaffForm({ ...staffForm, staff_role: e.target.value })}>
+              <option value="">Select a role</option>
+              {activeRoles.map((r) => <option key={r.slug} value={r.slug}>{r.label}</option>)}
             </select>
           </Field>
           <Field label="Reporting manager">
-            <select
-              value={staffForm.assigned_manager_id}
-              onChange={(e) => setStaffForm({ ...staffForm, assigned_manager_id: e.target.value })}
-            >
+            <select value={staffForm.assigned_manager_id}
+              onChange={(e) => setStaffForm({ ...staffForm, assigned_manager_id: e.target.value })}>
               <option value="">Unassigned</option>
               {managers
                 .filter((m) => !staffForm.city_slug || m.city_slug === staffForm.city_slug)
-                .map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.full_name}
-                  </option>
-                ))}
+                .map((m) => <option key={m.id} value={m.id}>{m.full_name}</option>)}
             </select>
           </Field>
-          <Field label="Assigned location">
-            <input
-              value={staffForm.assigned_location}
-              onChange={(e) => setStaffForm({ ...staffForm, assigned_location: e.target.value })}
-              placeholder="North Center"
-            />
+          <Field label="Area within the city">
+            <input value={staffForm.assigned_location} placeholder="Arera Colony"
+              onChange={(e) => setStaffForm({ ...staffForm, assigned_location: e.target.value })} />
           </Field>
           <Field label="Qualifications (comma-separated)">
-            <input
-              value={staffForm.qualifications}
-              onChange={(e) => setStaffForm({ ...staffForm, qualifications: e.target.value })}
-              placeholder="BSN, RN License, First Aid"
-            />
+            <input value={staffForm.qualifications} placeholder="BSc Nursing, RN License"
+              onChange={(e) => setStaffForm({ ...staffForm, qualifications: e.target.value })} />
           </Field>
           <Field label="Years of experience">
-            <input
-              type="number"
-              min="0"
-              value={staffForm.experience_years}
-              onChange={(e) => setStaffForm({ ...staffForm, experience_years: e.target.value })}
-            />
+            <input type="number" min="0" value={staffForm.experience_years}
+              onChange={(e) => setStaffForm({ ...staffForm, experience_years: e.target.value })} />
           </Field>
           <Field label="Availability">
-            <select
-              value={staffForm.availability_status}
-              onChange={(e) => setStaffForm({ ...staffForm, availability_status: e.target.value })}
-            >
-              {AVAILABILITY_STATUSES.map((s) => (
-                <option key={s} value={s}>
-                  {humanise(s)}
-                </option>
-              ))}
+            <select value={staffForm.availability_status}
+              onChange={(e) => setStaffForm({ ...staffForm, availability_status: e.target.value })}>
+              {AVAILABILITY_STATUSES.map((s) => <option key={s} value={s}>{humanise(s)}</option>)}
             </select>
           </Field>
         </Modal>
       )}
 
-      {transferFor && (
-        <TransferModal
-          staffMember={transferFor}
-          managers={managers}
-          cities={cities}
-          onClose={() => setTransferFor(null)}
-          onDone={async (message) => {
-            setTransferFor(null);
-            setNotice(message);
-            await load();
-          }}
-          onError={setError}
-        />
+      {roleForm && (
+        <Modal
+          title={roleEditSlug ? 'Edit role' : 'Add role'}
+          onClose={() => setRoleForm(null)}
+          onSave={saveRole}
+        >
+          <Field label="Role name" required>
+            <input value={roleForm.label} placeholder="Physiotherapist"
+              onChange={(e) => setRoleForm({ ...roleForm, label: e.target.value })} />
+          </Field>
+          <Field label="Identifier">
+            <input
+              value={roleEditSlug ?? (roleForm.slug || slugify(roleForm.label))}
+              disabled={!!roleEditSlug}
+              onChange={(e) => setRoleForm({ ...roleForm, slug: e.target.value })}
+            />
+          </Field>
+          {!roleEditSlug && (
+            <p className="muted">
+              Derived from the name and fixed once saved, because staff records reference it.
+            </p>
+          )}
+          <Field label="Description">
+            <input value={roleForm.description}
+              onChange={(e) => setRoleForm({ ...roleForm, description: e.target.value })} />
+          </Field>
+          <Field label="Sort order">
+            <input type="number" value={roleForm.sort_order}
+              onChange={(e) => setRoleForm({ ...roleForm, sort_order: e.target.value })} />
+          </Field>
+        </Modal>
+      )}
+
+      {cityForm && (
+        <Modal
+          title={cityEditSlug ? 'Edit city' : 'Add city'}
+          onClose={() => setCityForm(null)}
+          onSave={saveCity}
+        >
+          <Field label="City name" required>
+            <input value={cityForm.name} placeholder="Ujjain, Madhya Pradesh"
+              onChange={(e) => setCityForm({ ...cityForm, name: e.target.value })} />
+          </Field>
+          <Field label="Identifier">
+            <input
+              value={cityEditSlug ?? (cityForm.slug || slugify(cityForm.name.split(',')[0]))}
+              disabled={!!cityEditSlug}
+              onChange={(e) => setCityForm({ ...cityForm, slug: e.target.value })}
+            />
+          </Field>
+          {!cityEditSlug && (
+            <p className="muted">
+              Taken from the part before the comma and fixed once saved, because managers, staff
+              and orders reference it.
+            </p>
+          )}
+          <Field label="Support phone">
+            <input type="tel" value={cityForm.support_phone} placeholder="+919999999999"
+              onChange={(e) => setCityForm({ ...cityForm, support_phone: e.target.value })} />
+          </Field>
+          <Field label="WhatsApp number">
+            <input type="tel" value={cityForm.whatsapp_number} placeholder="+919999999999"
+              onChange={(e) => setCityForm({ ...cityForm, whatsapp_number: e.target.value })} />
+          </Field>
+          <Field label="Sort order">
+            <input type="number" value={cityForm.sort_order}
+              onChange={(e) => setCityForm({ ...cityForm, sort_order: e.target.value })} />
+          </Field>
+        </Modal>
       )}
     </>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({ label, value, tone }: { label: string; value: number; tone?: 'warn' }) {
   return (
     <div className="stat-card">
       <h3>{label}</h3>
-      <p className="stat-number">{value}</p>
+      <p className={`stat-number ${tone === 'warn' ? 'stat-warn' : ''}`}>{value}</p>
     </div>
   );
 }
@@ -711,10 +862,10 @@ function BreakdownCard({ title, data }: { title: string; data?: Record<string, n
     <div className="stat-card">
       <h3>{title}</h3>
       <div className="role-breakdown">
-        {entries.map(([key, count]) => (
-          <div key={key} className="role-item">
-            <span>{humanise(key)}</span>
-            <strong>{count}</strong>
+        {entries.map(([k, v]) => (
+          <div key={k} className="role-item">
+            <span>{humanise(k)}</span>
+            <strong>{v}</strong>
           </div>
         ))}
         {entries.length === 0 && <span className="muted">No data</span>}
@@ -723,37 +874,19 @@ function BreakdownCard({ title, data }: { title: string; data?: Record<string, n
   );
 }
 
-function Field({
-  label,
-  required,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: ReactNode;
-}) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
     <div className="form-group">
-      <label>
-        {label} {required && <span className="req">*</span>}
-      </label>
+      <label>{label} {required && <span className="req">*</span>}</label>
       {children}
     </div>
   );
 }
 
 function Modal({
-  title,
-  children,
-  onClose,
-  onSave,
-  saveLabel = 'Save',
+  title, children, onClose, onSave, saveLabel = 'Save',
 }: {
-  title: string;
-  children: ReactNode;
-  onClose: () => void;
-  onSave: () => void;
-  saveLabel?: string;
+  title: string; children: ReactNode; onClose: () => void; onSave: () => void; saveLabel?: string;
 }) {
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true">
@@ -761,123 +894,10 @@ function Modal({
         <h2>{title}</h2>
         {children}
         <div className="modal-actions">
-          <button className="btn-primary" type="button" onClick={onSave}>
-            {saveLabel}
-          </button>
-          <button className="btn-secondary" type="button" onClick={onClose}>
-            Cancel
-          </button>
+          <button className="btn-primary" type="button" onClick={onSave}>{saveLabel}</button>
+          <button className="btn-secondary" type="button" onClick={onClose}>Cancel</button>
         </div>
       </div>
     </div>
-  );
-}
-
-function TransferModal({
-  staffMember,
-  managers,
-  cities,
-  onClose,
-  onDone,
-  onError,
-}: {
-  staffMember: Staff;
-  managers: ManagerWithCount[];
-  cities: City[];
-  onClose: () => void;
-  onDone: (message: string) => Promise<void>;
-  onError: (message: string) => void;
-}) {
-  const [mode, setMode] = useState<'manager' | 'city'>('manager');
-  const [managerId, setManagerId] = useState(staffMember.assigned_manager_id ?? '');
-  const [citySlug, setCitySlug] = useState(staffMember.city_slug ?? '');
-  const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    setBusy(true);
-
-    // transfer_staff_to_city also reassigns the manager, because a manager only
-    // covers their own city.
-    const { data, error } =
-      mode === 'manager'
-        ? await supabase.rpc('transfer_staff', {
-            p_staff_id: staffMember.id,
-            p_new_manager_id: managerId || null,
-            p_reason: reason.trim() || null,
-          })
-        : await supabase.rpc('transfer_staff_to_city', {
-            p_staff_id: staffMember.id,
-            p_new_city_slug: citySlug,
-            p_new_manager_id: managerId || null,
-            p_reason: reason.trim() || null,
-          });
-
-    setBusy(false);
-
-    if (error) {
-      onError(error.message);
-      return;
-    }
-    if (data && typeof data === 'object' && 'error' in data) {
-      onError(String((data as { error: unknown }).error));
-      return;
-    }
-    await onDone(`${staffMember.full_name} transferred.`);
-  };
-
-  return (
-    <Modal
-      title={`Transfer ${staffMember.full_name}`}
-      onClose={onClose}
-      onSave={busy ? () => undefined : submit}
-      saveLabel={busy ? 'Transferring…' : 'Transfer'}
-    >
-      <Field label="Transfer type">
-        <select value={mode} onChange={(e) => setMode(e.target.value as 'manager' | 'city')}>
-          <option value="manager">To another manager (same city)</option>
-          <option value="city">To another city</option>
-        </select>
-      </Field>
-
-      {mode === 'city' && (
-        <Field label="New city" required>
-          <select
-            value={citySlug}
-            onChange={(e) => {
-              setCitySlug(e.target.value);
-              // The current manager does not cover the new city.
-              setManagerId('');
-            }}
-          >
-            <option value="">Select a city</option>
-            {cities.map((c) => (
-              <option key={c.slug} value={c.slug}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-      )}
-
-      <Field label="New manager">
-        <select value={managerId} onChange={(e) => setManagerId(e.target.value)}>
-          <option value="">Unassigned</option>
-          {managers
-            .filter((m) =>
-              mode === 'city' ? m.city_slug === citySlug : m.city_slug === staffMember.city_slug
-            )
-            .map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.full_name} ({m.staff_count} staff)
-              </option>
-            ))}
-        </select>
-      </Field>
-
-      <Field label="Reason">
-        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Recorded in the audit trail" />
-      </Field>
-    </Modal>
   );
 }

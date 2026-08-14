@@ -120,13 +120,16 @@ export default function App() {
     );
   }
 
+  // data-role drives the per-portal gradient, so the user type is identifiable
+  // at a glance: admin teal, manager indigo, staff amber.
   const shell = (body: ReactNode) => (
-    <div className="app-shell">
+    <div className="app-shell" data-role={profile.role}>
       <header className="topbar">
         <div>
           <h1>Pari Home Healthcare</h1>
           <p className="topbar-sub">
-            {profile.full_name || profile.email} · {profile.role}
+            {profile.full_name || profile.email}
+            <span className="role-chip">{profile.role}</span>
           </p>
         </div>
         <button className="btn-secondary" type="button" onClick={signOut}>

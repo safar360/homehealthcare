@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { supabase } from './lib/supabase';
 import {
   AVAILABILITY_STATUSES,
-  STAFF_ROLES,
   humanise,
   splitList,
   type Manager,
   type Profile,
   type Staff,
+  type StaffRoleRow,
 } from './lib/types';
 
 type Tab = 'overview' | 'staff';
@@ -38,6 +38,7 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
   const [tab, setTab] = useState<Tab>('overview');
   const [manager, setManager] = useState<Manager | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [roles, setRoles] = useState<StaffRoleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -75,6 +76,13 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
 
     setManager(managerRow as Manager);
 
+    const { data: roleRows } = await supabase
+      .from('staff_roles')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order');
+    setRoles((roleRows as StaffRoleRow[]) ?? []);
+
     const { data: staffRows, error: staffError } = await supabase
       .from('location_staff')
       .select('*')
@@ -108,13 +116,13 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
       available: staff.filter((s) => s.availability_status === 'available').length,
       onLeave: staff.filter((s) => s.availability_status === 'on_leave').length,
       training: staff.filter((s) => s.availability_status === 'training').length,
-      byRole: STAFF_ROLES.reduce<Record<string, number>>((acc, role) => {
-        const count = staff.filter((s) => s.staff_role === role).length;
-        if (count > 0) acc[role] = count;
+      byRole: roles.reduce<Record<string, number>>((acc, role) => {
+        const count = staff.filter((s) => s.staff_role === role.slug).length;
+        if (count > 0) acc[role.label] = count;
         return acc;
       }, {}),
     }),
-    [staff]
+    [staff, roles]
   );
 
   const save = async () => {
@@ -260,7 +268,7 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
             <div className="role-breakdown">
               {Object.entries(stats.byRole).map(([role, count]) => (
                 <div key={role} className="role-item">
-                  <span>{humanise(role)}</span>
+                  <span>{role}</span>
                   <strong>{count}</strong>
                 </div>
               ))}
@@ -341,7 +349,9 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
                       <span className="muted">{s.phone_number ?? ''}</span>
                     </td>
                     <td>
-                      <span className="badge badge-role">{humanise(s.staff_role)}</span>
+                      <span className="badge badge-role">
+                        {roles.find((r) => r.slug === s.staff_role)?.label ?? humanise(s.staff_role)}
+                      </span>
                     </td>
                     <td>{s.assigned_location ?? '—'}</td>
                     <td>
@@ -425,9 +435,9 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
             </ManagerField>
             <ManagerField label="Role">
               <select value={form.staff_role} onChange={(e) => setForm({ ...form, staff_role: e.target.value })}>
-                {STAFF_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {humanise(r)}
+                {roles.map((r) => (
+                  <option key={r.slug} value={r.slug}>
+                    {r.label}
                   </option>
                 ))}
               </select>

@@ -643,3 +643,102 @@ table tbody tr:hover {
     align-items: flex-start;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Per-role identity
+   Each portal carries its own gradient so the user type is obvious at a glance:
+   admin teal, manager indigo, staff amber. Set on .app-shell via data-role.
+   --------------------------------------------------------------------------- */
+
+.app-shell[data-role='admin']   { --role-a: #0e7c66; --role-b: #10b981; --role-name: 'Admin'; }
+.app-shell[data-role='manager'] { --role-a: #4338ca; --role-b: #6366f1; }
+.app-shell[data-role='staff']   { --role-a: #b45309; --role-b: #f59e0b; }
+
+/* The bar across the top of the page is the main carrier of the role colour. */
+.app-shell[data-role] {
+  position: relative;
+  padding-top: 32px;
+}
+
+.app-shell[data-role]::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  background: linear-gradient(90deg, var(--role-a), var(--role-b));
+  z-index: 10;
+}
+
+.app-shell[data-role] .topbar {
+  background: linear-gradient(135deg, var(--role-a) 0%, var(--role-b) 100%);
+  color: white;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
+}
+
+.app-shell[data-role] .topbar h1,
+.app-shell[data-role] .topbar .topbar-sub {
+  color: white;
+}
+
+.app-shell[data-role] .topbar .topbar-sub {
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.app-shell[data-role] .topbar .btn-secondary {
+  background: rgb(255 255 255 / 18%);
+  border-color: rgb(255 255 255 / 35%);
+  color: white;
+}
+
+.app-shell[data-role] .topbar .btn-secondary:hover {
+  background: rgb(255 255 255 / 28%);
+}
+
+.role-chip {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 22%);
+  border: 1px solid rgb(255 255 255 / 35%);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* The active tab and primary buttons pick up the role colour too. */
+.app-shell[data-role] .tab.active {
+  color: var(--role-a);
+  border-bottom-color: var(--role-a);
+}
+
+.app-shell[data-role] .btn-primary {
+  background: linear-gradient(135deg, var(--role-a), var(--role-b));
+}
+
+.app-shell[data-role] .stat-number {
+  color: var(--role-a);
+}
+
+/* Warnings the admin needs to notice: uncovered cities, unassigned staff. */
+.banner-warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.cell-warn {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+code {
+  background: var(--gray-100);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+}

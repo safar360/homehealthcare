@@ -12,6 +12,10 @@ export type Profile = {
 export type City = {
   slug: string;
   name: string;
+  support_phone?: string | null;
+  whatsapp_number?: string | null;
+  is_active?: boolean;
+  sort_order?: number;
 };
 
 export type Manager = {
@@ -28,7 +32,16 @@ export type Manager = {
 /** Shape returned by the get_managers_with_staff_count() RPC. */
 export type ManagerWithCount = Omit<Manager, 'user_id'> & { staff_count: number };
 
-export type StaffRole = 'nurse' | 'assistant' | 'therapist' | 'care_coordinator' | 'supervisor';
+/** Roles are admin-managed rows now, not a fixed union. */
+export type StaffRole = string;
+
+export type StaffRoleRow = {
+  slug: string;
+  label: string;
+  description: string | null;
+  is_active: boolean;
+  sort_order: number;
+};
 
 export type AvailabilityStatus = 'available' | 'on_leave' | 'inactive' | 'training';
 
@@ -60,23 +73,32 @@ export type Transfer = {
   transferred_at: string;
 };
 
+/** One city's rollup, as returned by get_admin_dashboard_summary(). */
+export type LocationRollup = {
+  city: string;
+  slug: string;
+  managers: number;
+  staff: number;
+  available: number;
+  areas: string[];
+  orders: number;
+};
+
 export type DashboardSummary = {
   total_managers: number;
   total_staff: number;
   total_cities: number;
+  total_roles: number;
+  total_orders: number;
+  unassigned_staff: number;
+  cities_without_manager: string[];
   staff_by_role: Record<string, number>;
   staff_by_city: Record<string, number>;
+  staff_by_availability: Record<string, number>;
   managers_by_city: Record<string, number>;
+  by_location: LocationRollup[];
   orders_by_status: Record<string, number>;
 };
-
-export const STAFF_ROLES: StaffRole[] = [
-  'nurse',
-  'assistant',
-  'therapist',
-  'care_coordinator',
-  'supervisor',
-];
 
 export const AVAILABILITY_STATUSES: AvailabilityStatus[] = [
   'available',
@@ -97,4 +119,13 @@ export function splitList(value: string): string[] {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+/** "Care coordinator" -> "care_coordinator", for new role and city slugs. */
+export function slugify(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }

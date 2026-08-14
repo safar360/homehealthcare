@@ -53,18 +53,30 @@ end
 $$;
 
 -- ---------------------------------------------------------------------------
--- 2. Enums
+-- 2. Staff roles
+--
+-- A table, not an enum. An admin adds roles from the portal at runtime, and
+-- extending a Postgres enum needs DDL, so an enum would put every new role
+-- behind a migration. The earlier staff_role_type enum is converted to this in
+-- the upgrade pass below.
 -- ---------------------------------------------------------------------------
 
-do $$
-begin
-  create type staff_role_type as enum (
-    'nurse', 'assistant', 'therapist', 'care_coordinator', 'supervisor'
-  );
-exception
-  when duplicate_object then null;
-end
-$$;
+create table if not exists public.staff_roles (
+  slug text primary key,
+  label text not null,
+  description text,
+  is_active boolean not null default true,
+  sort_order int not null default 0,
+  created_at timestamptz default now()
+);
+
+insert into public.staff_roles (slug, label, sort_order) values
+  ('nurse',            'Nurse',            1),
+  ('assistant',        'Care assistant',   2),
+  ('therapist',        'Therapist',        3),
+  ('care_coordinator', 'Care coordinator', 4),
+  ('supervisor',       'Supervisor',       5)
+on conflict (slug) do nothing;
 
 -- ---------------------------------------------------------------------------
 -- 3. Identity
@@ -244,7 +256,7 @@ create table if not exists public.location_staff (
   full_name text not null,
   email text,
   phone_number text,
-  staff_role staff_role_type not null default 'assistant',
+  staff_role text not null default 'assistant' references public.staff_roles(slug),
   city_slug text references public.cities(slug),
   assigned_manager_id uuid references public.location_managers(id) on delete set null,
   assigned_location text,
@@ -292,7 +304,49 @@ alter table public.location_managers add column if not exists created_by uuid re
 alter table public.location_managers add column if not exists updated_at timestamptz default now();
 
 alter table public.location_staff add column if not exists user_id uuid references public.profiles(id) on delete set null;
-alter table public.location_staff add column if not exists staff_role staff_role_type not null default 'assistant';
+alter table public.location_staff add column if not exists staff_role text not null default 'assistant';
+
+-- Convert a staff_role column still typed as the old staff_role_type enum to
+-- plain text backed by staff_roles. get_city_staff takes the enum in its
+-- signature, so it has to go before the type can be dropped.
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'location_staff'
+      and column_name = 'staff_role' and udt_name = 'staff_role_type'
+  ) then
+    drop function if exists public.get_city_staff(text, staff_role_type, text);
+
+    alter table public.location_staff alter column staff_role drop default;
+    alter table public.location_staff alter column staff_role type text using staff_role::text;
+    alter table public.location_staff alter column staff_role set default 'assistant';
+  end if;
+end
+$$;
+
+-- Any role already in use but missing from the table would fail the foreign key.
+insert into public.staff_roles (slug, label, sort_order)
+select distinct s.staff_role, initcap(replace(s.staff_role, '_', ' ')), 99
+from public.location_staff s
+where s.staff_role is not null
+on conflict (slug) do nothing;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'location_staff_staff_role_fkey'
+      and conrelid = 'public.location_staff'::regclass
+  ) then
+    alter table public.location_staff
+      add constraint location_staff_staff_role_fkey
+      foreign key (staff_role) references public.staff_roles(slug);
+  end if;
+end
+$$;
+
+drop type if exists staff_role_type;
 alter table public.location_staff add column if not exists assigned_manager_id uuid references public.location_managers(id) on delete set null;
 alter table public.location_staff add column if not exists assigned_location text;
 alter table public.location_staff add column if not exists qualifications text[] not null default array[]::text[];
@@ -498,6 +552,7 @@ alter table public.location_managers enable row level security;
 alter table public.location_staff enable row level security;
 alter table public.staff_transfer_history enable row level security;
 alter table public.staff_performance enable row level security;
+alter table public.staff_roles enable row level security;
 
 -- Profiles ------------------------------------------------------------------
 create policy "profiles_select" on public.profiles
@@ -519,7 +574,9 @@ declare
 begin
   foreach content_table in array array[
     'cities', 'hero_banners', 'quick_actions', 'services',
-    'products', 'reviews', 'social_links', 'home_sections'
+    'products', 'reviews', 'social_links', 'home_sections',
+    -- Roles are reference data: everyone reads them, only an admin edits them.
+    'staff_roles'
   ]
   loop
     execute format(
@@ -831,29 +888,92 @@ begin
 
   select jsonb_build_object(
     'total_managers', (select count(*) from public.location_managers where is_active),
-    'total_staff', (select count(*) from public.location_staff where is_active),
-    'total_cities', (select count(distinct city_slug) from public.location_managers where is_active),
+    'total_staff',    (select count(*) from public.location_staff where is_active),
+    'total_cities',   (select count(*) from public.cities where is_active),
+    'total_roles',    (select count(*) from public.staff_roles where is_active),
+    'total_orders',   (select count(*) from public.orders),
+
+    -- Staff without a manager, and cities with nobody covering them, are the two
+    -- gaps an admin needs to see immediately.
+    'unassigned_staff', (
+      select count(*) from public.location_staff
+      where is_active and assigned_manager_id is null
+    ),
+    'cities_without_manager', coalesce((
+      select jsonb_agg(c.name order by c.name)
+      from public.cities c
+      where c.is_active
+        and not exists (
+          select 1 from public.location_managers m
+          where m.is_active and m.city_slug = c.slug
+        )
+    ), '[]'::jsonb),
+
     'staff_by_role', coalesce((
-      select jsonb_object_agg(staff_role::text, c)
+      select jsonb_object_agg(label, c)
       from (
-        select staff_role, count(*) as c from public.location_staff
-        where is_active group by staff_role
+        select coalesce(r.label, s.staff_role) as label, count(*) as c
+        from public.location_staff s
+        left join public.staff_roles r on r.slug = s.staff_role
+        where s.is_active group by coalesce(r.label, s.staff_role)
       ) t
     ), '{}'::jsonb),
     'staff_by_city', coalesce((
-      select jsonb_object_agg(city_slug, c)
+      select jsonb_object_agg(name, c)
       from (
-        select city_slug, count(*) as c from public.location_staff
-        where is_active and city_slug is not null group by city_slug
+        select coalesce(ci.name, s.city_slug) as name, count(*) as c
+        from public.location_staff s
+        left join public.cities ci on ci.slug = s.city_slug
+        where s.is_active and s.city_slug is not null
+        group by coalesce(ci.name, s.city_slug)
+      ) t
+    ), '{}'::jsonb),
+    'staff_by_availability', coalesce((
+      select jsonb_object_agg(availability_status, c)
+      from (
+        select availability_status, count(*) as c from public.location_staff
+        where is_active group by availability_status
       ) t
     ), '{}'::jsonb),
     'managers_by_city', coalesce((
-      select jsonb_object_agg(city_slug, c)
+      select jsonb_object_agg(name, c)
       from (
-        select city_slug, count(*) as c from public.location_managers
-        where is_active and city_slug is not null group by city_slug
+        select coalesce(ci.name, m.city_slug) as name, count(*) as c
+        from public.location_managers m
+        left join public.cities ci on ci.slug = m.city_slug
+        where m.is_active and m.city_slug is not null
+        group by coalesce(ci.name, m.city_slug)
       ) t
     ), '{}'::jsonb),
+
+    -- Location-wise rollup: one row per city with its managers, staff and the
+    -- areas actually covered inside it.
+    'by_location', coalesce((
+      select jsonb_agg(x order by x ->> 'city')
+      from (
+        select jsonb_build_object(
+          'city', c.name,
+          'slug', c.slug,
+          'managers', (select count(*) from public.location_managers m
+                       where m.is_active and m.city_slug = c.slug),
+          'staff', (select count(*) from public.location_staff s
+                    where s.is_active and s.city_slug = c.slug),
+          'available', (select count(*) from public.location_staff s
+                        where s.is_active and s.city_slug = c.slug
+                          and s.availability_status = 'available'),
+          'areas', coalesce((
+            select jsonb_agg(distinct s.assigned_location)
+            from public.location_staff s
+            where s.is_active and s.city_slug = c.slug
+              and s.assigned_location is not null and s.assigned_location <> ''
+          ), '[]'::jsonb),
+          'orders', (select count(*) from public.orders o where o.city_slug = c.slug)
+        ) as x
+        from public.cities c
+        where c.is_active
+      ) t
+    ), '[]'::jsonb),
+
     'orders_by_status', coalesce((
       select jsonb_object_agg(status, c)
       from (select status, count(*) as c from public.orders group by status) t
@@ -1028,9 +1148,13 @@ begin
 end;
 $$;
 
+-- Signature changed when staff_role stopped being an enum, so the old overload
+-- has to be dropped rather than replaced.
+drop function if exists public.get_city_staff(text, text, text);
+
 create or replace function public.get_city_staff(
   p_city_slug text,
-  p_role staff_role_type default null,
+  p_role text default null,
   p_status text default null
 )
 returns table (
@@ -1038,7 +1162,7 @@ returns table (
   full_name text,
   email text,
   phone_number text,
-  staff_role staff_role_type,
+  staff_role text,
   city_slug text,
   assigned_manager_id uuid,
   assigned_location text,
@@ -1084,10 +1208,10 @@ revoke execute on function public.get_admin_dashboard_summary() from anon;
 -- ---------------------------------------------------------------------------
 
 insert into public.cities (slug, name, support_phone, whatsapp_number, sort_order) values
-  ('mumbai', 'Mumbai', '+919999999999', '+919999999999', 1),
-  ('pune', 'Pune', '+919999999998', '+919999999998', 2),
-  ('bengaluru', 'Bengaluru', '+919999999997', '+919999999997', 3),
-  ('delhi', 'Delhi', '+919999999996', '+919999999996', 4)
+  ('bhopal',    'Bhopal, Madhya Pradesh',   '+919999999999', '+919999999999', 1),
+  ('indore',    'Indore, Madhya Pradesh',   '+919999999998', '+919999999998', 2),
+  ('gwalior',   'Gwalior, Madhya Pradesh',  '+919999999997', '+919999999997', 3),
+  ('jabalpur',  'Jabalpur, Madhya Pradesh', '+919999999996', '+919999999996', 4)
 on conflict (slug) do nothing;
 
 insert into public.home_sections (key, title, subtitle, sort_order) values
@@ -1126,9 +1250,9 @@ insert into public.products (name, description, price, unit, image_url, whatsapp
 on conflict do nothing;
 
 insert into public.reviews (author_name, city_slug, rating, comment, sort_order) values
-  ('Anita Sharma', 'mumbai', 5, 'The nurse arrived within an hour and took excellent care of my father.', 1),
-  ('Rakesh Verma', 'pune', 5, 'ICU setup at home was done in a day. The team was professional and calm.', 2),
-  ('Meera Iyer', 'bengaluru', 4, 'Physiotherapy sessions at home helped my mother walk again after surgery.', 3)
+  ('Anita Sharma', 'bhopal', 5, 'The nurse arrived within an hour and took excellent care of my father.', 1),
+  ('Rakesh Verma', 'indore', 5, 'ICU setup at home was done in a day. The team was professional and calm.', 2),
+  ('Meera Iyer', 'gwalior', 4, 'Physiotherapy sessions at home helped my mother walk again after surgery.', 3)
 on conflict do nothing;
 
 insert into public.social_links (platform, url, sort_order) values
@@ -1150,6 +1274,6 @@ on conflict do nothing;
 -- Repeat with role = 'manager' for managers, and link their operational record:
 --
 --   insert into public.location_managers (user_id, full_name, email, city_slug)
---   select id, full_name, email, 'mumbai' from public.profiles
+--   select id, full_name, email, 'bhopal' from public.profiles
 --   where email = 'manager@example.com';
 -- ---------------------------------------------------------------------------
