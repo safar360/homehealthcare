@@ -14,6 +14,8 @@ with different columns.
   actions, services, reviews, products, social links.
 - Section order and visibility come from the `home_sections` table, so content changes need no
   release.
+- Order capture: an **Order** button on every service and product opens a sheet (name, phone, city,
+  address, preferred time, note) that inserts into `orders`. Anonymous — no account needed.
 - Falls back to bundled demo content when Supabase credentials are absent.
 
 ### Operations portal (`admin/`)

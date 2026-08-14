@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { supabase } from './lib/supabase';
 
 type City = {
@@ -137,11 +137,19 @@ const demoContent: HomeContent = {
   ],
 };
 
+/** What the order sheet is capturing: a service booking or a product order. */
+type OrderTarget = {
+  item_type: 'service' | 'product';
+  item_id: string;
+  item_name: string;
+};
+
 function App() {
   const [content, setContent] = useState<HomeContent>(demoContent);
   const [connected, setConnected] = useState(false);
   const [message, setMessage] = useState('Loading patient home content...');
   const [activeSlide, setActiveSlide] = useState(0);
+  const [orderTarget, setOrderTarget] = useState<OrderTarget | null>(null);
 
   useEffect(() => {
     const loadContent = async () => {
@@ -285,6 +293,36 @@ function App() {
                       <span>{service.duration ?? 'Flexible'}</span>
                       <strong>{service.price === 0 ? 'Included' : `EGP ${service.price}`}</strong>
                     </div>
+                    <div className="card-actions">
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() =>
+                          setOrderTarget({
+                            item_type: 'service',
+                            item_id: service.id,
+                            item_name: service.name,
+                          })
+                        }
+                      >
+                        Order
+                      </button>
+                      {service.phone_number && (
+                        <a className="btn btn-ghost" href={`tel:${service.phone_number}`}>
+                          Call
+                        </a>
+                      )}
+                      {service.whatsapp_number && (
+                        <a
+                          className="btn btn-ghost"
+                          href={`https://wa.me/${service.whatsapp_number.replace(/[^\d]/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          WhatsApp
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </article>
               ))}
@@ -333,6 +371,31 @@ function App() {
                       <strong>EGP {product.price.toFixed(2)}</strong>
                       <span>{product.unit ?? 'item'}</span>
                     </div>
+                    <div className="card-actions">
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() =>
+                          setOrderTarget({
+                            item_type: 'product',
+                            item_id: product.id,
+                            item_name: product.name,
+                          })
+                        }
+                      >
+                        Order
+                      </button>
+                      {product.whatsapp_number && (
+                        <a
+                          className="btn btn-ghost"
+                          href={`https://wa.me/${product.whatsapp_number.replace(/[^\d]/g, '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          WhatsApp
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </article>
               ))}
@@ -373,6 +436,179 @@ function App() {
       <main className="page-grid">
         {sectionOrder.map((section) => section.key !== 'hero' && renderSection(section))}
       </main>
+      {orderTarget && (
+        <OrderSheet
+          target={orderTarget}
+          cities={content.cities}
+          defaultCity={selectedCity?.slug}
+          onClose={() => setOrderTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Order capture. Anonymous by design -- a family can book without an account,
+ * which the orders table's insert policy allows. Everything else on that table
+ * requires a signed-in staff, manager or admin.
+ */
+function OrderSheet({
+  target,
+  cities,
+  defaultCity,
+  onClose,
+}: {
+  target: OrderTarget;
+  cities: City[];
+  defaultCity?: string;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState({
+    patient_name: '',
+    phone_number: '',
+    city_slug: defaultCity ?? '',
+    address: '',
+    preferred_time: '',
+    note: '',
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+
+    if (!form.patient_name.trim() || !form.phone_number.trim() || !form.address.trim()) {
+      setError('Name, phone number and address are required.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    const { error: insertError } = await supabase.from('orders').insert([
+      {
+        // item_type distinguishes the two, and only the matching id column is set.
+        item_type: target.item_type,
+        service_id: target.item_type === 'service' ? target.item_id : null,
+        product_id: target.item_type === 'product' ? target.item_id : null,
+        item_name: target.item_name,
+        patient_name: form.patient_name.trim(),
+        phone_number: form.phone_number.trim(),
+        city_slug: form.city_slug || null,
+        address: form.address.trim(),
+        preferred_time: form.preferred_time.trim() || null,
+        note: form.note.trim() || null,
+      },
+    ]);
+
+    setSubmitting(false);
+
+    if (insertError) {
+      setError(`Could not place the order: ${insertError.message}`);
+      return;
+    }
+    setDone(true);
+  };
+
+  if (done) {
+    return (
+      <div className="sheet-overlay" role="dialog" aria-modal="true">
+        <div className="sheet">
+          <h2>Request received</h2>
+          <p>
+            Thank you. Our team will call you on {form.phone_number} to confirm{' '}
+            {target.item_name}.
+          </p>
+          <div className="sheet-actions">
+            <button type="button" className="btn btn-primary" onClick={onClose}>
+              Done
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="sheet-overlay" role="dialog" aria-modal="true">
+      <form className="sheet" onSubmit={submit}>
+        <h2>Order {target.item_name}</h2>
+
+        <label>
+          Your name *
+          <input
+            value={form.patient_name}
+            onChange={(e) => setForm({ ...form, patient_name: e.target.value })}
+            required
+          />
+        </label>
+
+        <label>
+          Phone number *
+          <input
+            type="tel"
+            value={form.phone_number}
+            onChange={(e) => setForm({ ...form, phone_number: e.target.value })}
+            required
+          />
+        </label>
+
+        <label>
+          City
+          <select
+            value={form.city_slug}
+            onChange={(e) => setForm({ ...form, city_slug: e.target.value })}
+          >
+            <option value="">Select a city</option>
+            {cities.map((city) => (
+              <option key={city.slug} value={city.slug}>
+                {city.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Address *
+          <textarea
+            value={form.address}
+            onChange={(e) => setForm({ ...form, address: e.target.value })}
+            rows={2}
+            required
+          />
+        </label>
+
+        <label>
+          Preferred time
+          <input
+            value={form.preferred_time}
+            onChange={(e) => setForm({ ...form, preferred_time: e.target.value })}
+            placeholder="e.g. tomorrow morning"
+          />
+        </label>
+
+        <label>
+          Note
+          <textarea
+            value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+            rows={2}
+          />
+        </label>
+
+        {error && <p className="sheet-error">{error}</p>}
+
+        <div className="sheet-actions">
+          <button type="submit" className="btn btn-primary" disabled={submitting}>
+            {submitting ? 'Sending…' : 'Place order'}
+          </button>
+          <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>
+            Cancel
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
