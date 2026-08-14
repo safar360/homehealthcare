@@ -1,171 +1,165 @@
-import { useEffect, useMemo, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
+import { configError, supabase } from './lib/supabase';
+import type { Profile } from './lib/types';
+import LoginPage from './LoginPage';
+import AdminPortal from './AdminPortal';
+import ManagerPortal from './ManagerPortal';
+import StaffPortal from './StaffPortal';
+import './styles.css';
 
-type Order = {
-  id: string;
-  item_name: string;
-  patient_name: string;
-  phone_number: string;
-  city_slug: string | null;
-  address: string;
-  note: string | null;
-  status: string;
-  assigned_manager_name: string | null;
-  assigned_manager_phone: string | null;
-  assigned_manager_email: string | null;
-  assigned_at: string | null;
-  created_at: string;
-};
-
-type Manager = {
-  id: string;
-  full_name: string;
-  email: string | null;
-  phone_number: string | null;
-  city_slug: string | null;
-  is_active: boolean;
-};
-
-type Staff = {
-  id: string;
-  full_name: string;
-  email: string | null;
-  phone_number: string | null;
-  city_slug: string | null;
-  role: string;
-  is_active: boolean;
-};
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || 'https://your-project-ref.supabase.co',
-  import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-key',
-  { auth: { persistSession: false, autoRefreshToken: false } }
-);
-
-const statusOptions = ['pending', 'assigned', 'in_progress', 'completed', 'cancelled'];
-
+/**
+ * The ops portal is one app serving three roles. Which portal renders is decided
+ * by profiles.role, and the database enforces the same boundary through RLS --
+ * this routing is convenience, not the security control.
+ */
 export default function App() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [managers, setManagers] = useState<Manager[]>([]);
-  const [staff, setStaff] = useState<Staff[]>([]);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ managerId: '', staffId: '', status: 'assigned' });
-
-  const loadData = async () => {
-    setLoading(true);
-    const [{ data: ordersData }, { data: managersData }, { data: staffData }] = await Promise.all([
-      supabase.from('orders').select('*').order('created_at', { ascending: false }),
-      supabase.from('location_managers').select('*').eq('is_active', true).order('full_name'),
-      supabase.from('location_staff').select('*').eq('is_active', true).order('full_name'),
-    ]);
-
-    setOrders((ordersData as Order[]) || []);
-    setManagers((managersData as Manager[]) || []);
-    setStaff((staffData as Staff[]) || []);
-    setLoading(false);
-  };
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   useEffect(() => {
-    void loadData();
+    if (configError) {
+      setLoading(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      if (!data.session) setLoading(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      if (!nextSession) {
+        setProfile(null);
+        setProfileError(null);
+        setLoading(false);
+      }
+    });
+
+    return () => listener.subscription.unsubscribe();
   }, []);
 
-  const assignOrder = async (orderId: string) => {
-    const selectedManager = managers.find((m) => m.id === form.managerId);
-    const selectedStaff = staff.find((s) => s.id === form.staffId);
-    if (!selectedManager) return;
+  useEffect(() => {
+    if (!session) return;
 
-    await supabase.from('orders').update({
-      status: form.status,
-      assigned_manager_name: selectedManager.full_name,
-      assigned_manager_phone: selectedManager.phone_number,
-      assigned_manager_email: selectedManager.email,
-      assigned_staff_member: selectedStaff?.id ?? null,
-      assigned_at: new Date().toISOString(),
-    }).eq('id', orderId);
+    let cancelled = false;
+    setLoading(true);
 
-    await loadData();
-  };
+    supabase
+      .from('profiles')
+      .select('id, full_name, role, email, phone_number, city_slug')
+      .eq('id', session.user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          setProfileError(error.message);
+        } else if (!data) {
+          setProfileError(
+            'Signed in, but this account has no profile row. An admin needs to create one before you can use the portal.'
+          );
+        } else {
+          setProfile(data as Profile);
+          setProfileError(null);
+        }
+        setLoading(false);
+      });
 
-  const citySummary = useMemo(() => {
-    const map = new Map<string, number>();
-    orders.forEach((order) => {
-      const key = order.city_slug || 'unassigned';
-      map.set(key, (map.get(key) || 0) + 1);
-    });
-    return Array.from(map.entries()).map(([city, count]) => `${city}: ${count}`).join(' • ');
-  }, [orders]);
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
-  return (
+  const signOut = useCallback(() => {
+    void supabase.auth.signOut();
+  }, []);
+
+  if (configError) {
+    return (
+      <div className="login-shell">
+        <div className="login-card">
+          <h1>Configuration needed</h1>
+          <p className="form-error">{configError}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div className="login-shell">
+        <div className="login-card">
+          <p>Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) return <LoginPage />;
+
+  if (profileError || !profile) {
+    return (
+      <AccessDenied
+        title="Cannot load your profile"
+        message={profileError ?? 'Unknown error.'}
+        onSignOut={signOut}
+      />
+    );
+  }
+
+  if (profile.role === 'patient') {
+    return (
+      <AccessDenied
+        title="No portal access"
+        message={`${profile.email ?? 'This account'} has the "patient" role. The operations portal is for staff, managers and admins.`}
+        onSignOut={signOut}
+      />
+    );
+  }
+
+  const shell = (body: ReactNode) => (
     <div className="app-shell">
-      <header className="hero-card">
+      <header className="topbar">
         <div>
-          <p className="eyebrow">Operations portal</p>
           <h1>Pari Home Healthcare</h1>
-          <p className="subtle">Route orders, manage city managers and monitor active staff in one place.</p>
+          <p className="topbar-sub">
+            {profile.full_name || profile.email} · {profile.role}
+          </p>
         </div>
-        <div className="summary-pill">{citySummary || 'No orders yet'}</div>
+        <button className="btn-secondary" type="button" onClick={signOut}>
+          Sign out
+        </button>
       </header>
+      {body}
+    </div>
+  );
 
-      <section className="grid">
-        <div className="panel">
-          <h2>Orders queue</h2>
-          {loading ? <p>Loading...</p> : orders.length === 0 ? <p>No orders yet.</p> : (
-            <div className="stack">
-              {orders.map((order) => (
-                <article key={order.id} className="order-card">
-                  <div className="order-topline">
-                    <strong>{order.item_name}</strong>
-                    <span className="badge">{order.status}</span>
-                  </div>
-                  <p>{order.patient_name} • {order.phone_number}</p>
-                  <p>{order.address}</p>
-                  {order.note ? <p className="muted">{order.note}</p> : null}
-                  <p className="muted">City: {order.city_slug || 'unassigned'}</p>
-                  <div className="assign-row">
-                    <select value={form.managerId} onChange={(e) => setForm((prev) => ({ ...prev, managerId: e.target.value }))}>
-                      <option value="">Select manager</option>
-                      {managers.map((manager) => (
-                        <option key={manager.id} value={manager.id}>{manager.full_name}</option>
-                      ))}
-                    </select>
-                    <select value={form.staffId} onChange={(e) => setForm((prev) => ({ ...prev, staffId: e.target.value }))}>
-                      <option value="">Select staff</option>
-                      {staff.map((member) => (
-                        <option key={member.id} value={member.id}>{member.full_name}</option>
-                      ))}
-                    </select>
-                    <select value={form.status} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}>
-                      {statusOptions.map((option) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
-                    <button onClick={() => assignOrder(order.id)}>Assign</button>
-                  </div>
-                  {order.assigned_manager_name ? (
-                    <p className="muted">Assigned to {order.assigned_manager_name}</p>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
+  if (profile.role === 'admin') return shell(<AdminPortal />);
+  if (profile.role === 'manager') return shell(<ManagerPortal profile={profile} />);
+  return shell(<StaffPortal profile={profile} />);
+}
 
-        <div className="panel">
-          <h2>Managers and staff</h2>
-          <h3>Managers</h3>
-          <ul>
-            {managers.map((manager) => (
-              <li key={manager.id}>{manager.full_name} • {manager.city_slug || 'all cities'}</li>
-            ))}
-          </ul>
-          <h3>Staff</h3>
-          <ul>
-            {staff.map((member) => (
-              <li key={member.id}>{member.full_name} • {member.role}</li>
-            ))}
-          </ul>
-        </div>
-      </section>
+function AccessDenied({
+  title,
+  message,
+  onSignOut,
+}: {
+  title: string;
+  message: string;
+  onSignOut: () => void;
+}) {
+  return (
+    <div className="login-shell">
+      <div className="login-card">
+        <h1>{title}</h1>
+        <p className="form-error">{message}</p>
+        <button className="btn-secondary btn-block" type="button" onClick={onSignOut}>
+          Sign out
+        </button>
+      </div>
     </div>
   );
 }

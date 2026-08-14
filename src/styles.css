@@ -423,3 +423,123 @@ body { margin: 0; min-height: 100vh; }
     align-items: stretch;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Order capture
+   --------------------------------------------------------------------------- */
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: filter 0.15s ease, background 0.15s ease;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: #0e7c66;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: #f1f5f9;
+}
+
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 50;
+  overflow-y: auto;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 460px;
+  background: white;
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.28);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sheet h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.sheet label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.sheet input,
+.sheet select,
+.sheet textarea {
+  font: inherit;
+  font-weight: 400;
+  color: #0f172a;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: white;
+  resize: vertical;
+}
+
+.sheet input:focus,
+.sheet select:focus,
+.sheet textarea:focus {
+  outline: 2px solid #0e7c66;
+  outline-offset: 1px;
+  border-color: transparent;
+}
+
+.sheet-error {
+  margin: 0;
+  color: #dc2626;
+  font-size: 14px;
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}

@@ -1,41 +1,98 @@
 # Pari Home Healthcare
 
-Flutter app (mobile + responsive web) for a home healthcare service, backed by a single Supabase
-project. See [architecture.md](architecture.md) for the solution design and cost model,
-[supabase-setup.md](supabase-setup.md) for the step-by-step Supabase setup, [requirements.md](requirements.md) and [prd.md](prd.md) for scope.
+A home healthcare platform for patients, field staff, location managers and admins, built on a
+single Supabase project so it runs on the free tier with no fixed infrastructure cost.
 
-## Patient home screen
-Every section is driven by the backend (`get_home_content` RPC) and ordered by the `home_sections`
-table: city picker with call/WhatsApp in the top bar, auto-scrolling hero banner carousel, quick
-actions, services with WhatsApp/Call/Order CTAs, customer reviews, other products, and social links.
-Ordering opens a form (name, phone, city, location, preferred time, note) and writes to `orders`.
+- [STATUS.md](STATUS.md) — what actually works today and what does not
+- [architecture.md](architecture.md) — solution design and cost model
+- [supabase-setup.md](supabase-setup.md) — step-by-step backend setup
+- [docs/staff-management.md](docs/staff-management.md) — staff hierarchy, roles and transfers
+- [prd.md](prd.md), [requirements.md](requirements.md) — product scope
 
-## Backend setup
-1. Create a free Supabase project.
-2. Run `supabase-schema.sql` in the SQL editor. It creates the tables, RLS policies, the
-   `get_home_content` RPC and seed content, and is safe to re-run.
-3. Edit content (banners, services, products, reviews, cities, social links) from the Supabase table
-   editor - no app release is needed.
+## The two apps
 
-## Run the app
+| App | Directory | Port | Who it is for |
+|---|---|---|---|
+| Patient app | [src/](src/) | 3000 | Families browsing services and placing orders. Anonymous. |
+| Operations portal | [admin/](admin/) | 4000 | Admins, managers and staff. Requires sign-in. |
+
+Both are React + TypeScript + Vite talking directly to Supabase. There is no application server:
+PostgREST is the API and row level security is the authorisation layer.
+
+## Setup
+
+### 1. Backend
+
+Create a free Supabase project, open the SQL editor, and run
+[supabase-schema.sql](supabase-schema.sql). It is a single authoritative file covering tables, RLS
+policies, RPCs and seed content, and it is safe to re-run. See [supabase-setup.md](supabase-setup.md)
+for the full walkthrough, including how to create the first admin.
+
+### 2. Credentials
+
 ```bash
-flutter pub get
-flutter run -d chrome \
-  --dart-define=SUPABASE_URL=https://<project-ref>.supabase.co \
-  --dart-define=SUPABASE_ANON_KEY=<anon-key>
+cp .env.example .env.local              # patient app
+cp admin/.env.example admin/.env.local  # ops portal
 ```
 
-Without the `--dart-define` values the app renders bundled demo content that mirrors the SQL seed
-data, so the UI can be reviewed without a backend.
+Fill both in from **Project Settings → API**. `VITE_SUPABASE_URL` is the bare project URL — do not
+append `/rest/v1`, supabase-js adds it itself.
 
-## Build
+### 3. Run
+
 ```bash
-flutter build web --release --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...
-flutter build appbundle --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...
+npm install && npm run dev          # patient app  -> http://localhost:3000
+cd admin && npm install && npm run dev   # ops portal -> http://localhost:4000
 ```
+
+The patient app renders bundled demo content when the credentials are missing, so its UI can be
+reviewed without a backend. The ops portal cannot — it needs a real project to sign in against.
 
 ## Checks
+
 ```bash
-flutter analyze
-flutter test
+npm run build          # tsc -b && vite build
+cd admin && npm run build
 ```
+
+## Deployment
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds both apps and publishes
+them as one GitHub Pages site on every push to `main`:
+
+| Path | App |
+|---|---|
+| `/` | Patient app |
+| `/ops/` | Operations portal — login-gated and `noindex` |
+
+One-time setup in the repository:
+
+1. **Settings → Pages → Source → GitHub Actions**
+2. **Settings → Secrets and variables → Actions**, add:
+   - `VITE_SUPABASE_URL` — the bare project URL, no `/rest/v1` suffix
+   - `VITE_SUPABASE_ANON_KEY`
+
+The workflow fails fast with a clear message if either secret is missing, rather than
+silently shipping a patient app stuck on demo content.
+
+Both values are compiled into the JavaScript bundle. That is expected — the anon key is a
+public credential, and row level security is what actually protects the data. The
+`service_role` key must never appear in either app.
+
+Pages serves a project site under `/<repo>/`, so CI sets `PUBLIC_BASE` to prefix the asset
+URLs. Local dev and local builds are unaffected and stay at `/`.
+
+## Roles
+
+`profiles.role` decides everything. The ops portal routes on it, and the database enforces the same
+boundary through RLS.
+
+| Role | Sees |
+|---|---|
+| `patient` | The patient app only; refused by the ops portal |
+| `staff` | Own staff record and availability |
+| `manager` | Own team: add, edit and remove staff within their city |
+| `admin` | Everything: dashboard, all managers, all staff, transfers |
+
+New sign-ups get `patient`. Promoting an account is a deliberate SQL step — see
+[supabase-setup.md](supabase-setup.md).
