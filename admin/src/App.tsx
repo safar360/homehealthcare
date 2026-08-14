@@ -1,40 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-
-type Order = {
-  id: string;
-  item_name: string;
-  patient_name: string;
-  phone_number: string;
-  city_slug: string | null;
-  address: string;
-  note: string | null;
-  status: string;
-  assigned_manager_name: string | null;
-  assigned_manager_phone: string | null;
-  assigned_manager_email: string | null;
-  assigned_at: string | null;
-  created_at: string;
-};
-
-type Manager = {
-  id: string;
-  full_name: string;
-  email: string | null;
-  phone_number: string | null;
-  city_slug: string | null;
-  is_active: boolean;
-};
-
-type Staff = {
-  id: string;
-  full_name: string;
-  email: string | null;
-  phone_number: string | null;
-  city_slug: string | null;
-  role: string;
-  is_active: boolean;
-};
+import './styles.css';
 
 const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL || 'https://your-project-ref.supabase.co',
@@ -42,130 +8,646 @@ const supabase = createClient(
   { auth: { persistSession: false, autoRefreshToken: false } }
 );
 
-const statusOptions = ['pending', 'assigned', 'in_progress', 'completed', 'cancelled'];
+type Dashboard = {
+  total_managers: number;
+  total_staff: number;
+  total_cities: number;
+  staff_by_role: Record<string, number>;
+  staff_by_city: Record<string, number>;
+  managers_by_city: Record<string, number>;
+};
 
-export default function App() {
-  const [orders, setOrders] = useState<Order[]>([]);
+type Manager = {
+  id: string;
+  full_name: string;
+  email: string;
+  phone_number: string;
+  city_slug: string;
+  managed_locations: string[];
+  staff_count: number;
+  is_active: boolean;
+};
+
+type Staff = {
+  id: string;
+  full_name: string;
+  email: string;
+  phone_number: string;
+  staff_role: string;
+  city_slug: string;
+  assigned_manager_id: string;
+  assigned_location: string;
+  qualifications: string[];
+  availability_status: string;
+  is_active: boolean;
+  created_at: string;
+};
+
+type FormData = {
+  full_name: string;
+  email: string;
+  phone_number: string;
+  city_slug: string;
+  staff_role?: string;
+  assigned_location?: string;
+  qualifications?: string;
+  availability_status?: string;
+  managed_locations?: string;
+};
+
+const staffRoles = ['nurse', 'assistant', 'therapist', 'care_coordinator', 'supervisor'];
+const availabilityStatus = ['available', 'on_leave', 'inactive', 'training'];
+
+export default function AdminPortal() {
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ managerId: '', staffId: '', status: 'assigned' });
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'managers' | 'staff' | 'transfers'>('dashboard');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [entityType, setEntityType] = useState<'manager' | 'staff'>('manager');
+  
+  const [filterCity, setFilterCity] = useState<string>('');
+  const [filterRole, setFilterRole] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
 
-  const loadData = async () => {
+  const [formData, setFormData] = useState<FormData>({
+    full_name: '',
+    email: '',
+    phone_number: '',
+    city_slug: '',
+    staff_role: 'assistant',
+    assigned_location: '',
+    qualifications: '',
+    availability_status: 'available',
+    managed_locations: '',
+  });
+
+  const [cities, setCities] = useState<{ slug: string; name: string }[]>([]);
+
+  // Load initial data
+  useEffect(() => {
+    loadAllData();
+  }, []);
+
+  const loadAllData = async () => {
     setLoading(true);
-    const [{ data: ordersData }, { data: managersData }, { data: staffData }] = await Promise.all([
-      supabase.from('orders').select('*').order('created_at', { ascending: false }),
-      supabase.from('location_managers').select('*').eq('is_active', true).order('full_name'),
-      supabase.from('location_staff').select('*').eq('is_active', true).order('full_name'),
-    ]);
+    try {
+      // Load cities
+      const { data: citiesData } = await supabase.from('cities').select('slug, name').eq('is_active', true);
+      setCities(citiesData || []);
 
-    setOrders((ordersData as Order[]) || []);
-    setManagers((managersData as Manager[]) || []);
-    setStaff((staffData as Staff[]) || []);
+      // Load dashboard
+      const { data: dashData } = await supabase.rpc('get_admin_dashboard_summary');
+      setDashboard(dashData);
+
+      // Load managers with staff count
+      const { data: managersData } = await supabase.rpc('get_managers_with_staff_count');
+      setManagers((managersData as Manager[]) || []);
+
+      // Load all staff
+      const { data: staffData } = await supabase.from('location_staff').select('*').eq('is_active', true);
+      setStaff((staffData as Staff[]) || []);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
     setLoading(false);
   };
 
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  const assignOrder = async (orderId: string) => {
-    const selectedManager = managers.find((m) => m.id === form.managerId);
-    const selectedStaff = staff.find((s) => s.id === form.staffId);
-    if (!selectedManager) return;
-
-    await supabase.from('orders').update({
-      status: form.status,
-      assigned_manager_name: selectedManager.full_name,
-      assigned_manager_phone: selectedManager.phone_number,
-      assigned_manager_email: selectedManager.email,
-      assigned_staff_member: selectedStaff?.id ?? null,
-      assigned_at: new Date().toISOString(),
-    }).eq('id', orderId);
-
-    await loadData();
+  const handleAddEntity = () => {
+    setEditingId(null);
+    setFormData({
+      full_name: '',
+      email: '',
+      phone_number: '',
+      city_slug: '',
+      staff_role: 'assistant',
+      assigned_location: '',
+      qualifications: '',
+      availability_status: 'available',
+      managed_locations: '',
+    });
+    setShowAddModal(true);
   };
 
-  const citySummary = useMemo(() => {
-    const map = new Map<string, number>();
-    orders.forEach((order) => {
-      const key = order.city_slug || 'unassigned';
-      map.set(key, (map.get(key) || 0) + 1);
-    });
-    return Array.from(map.entries()).map(([city, count]) => `${city}: ${count}`).join(' • ');
-  }, [orders]);
+  const handleEditEntity = (entity: Manager | Staff) => {
+    setEditingId(entity.id);
+    if ('staff_role' in entity) {
+      // It's a staff member
+      const staffMember = entity as Staff;
+      setEntityType('staff');
+      setFormData({
+        full_name: staffMember.full_name,
+        email: staffMember.email || '',
+        phone_number: staffMember.phone_number || '',
+        city_slug: staffMember.city_slug,
+        staff_role: staffMember.staff_role,
+        assigned_location: staffMember.assigned_location || '',
+        qualifications: staffMember.qualifications.join(', '),
+        availability_status: staffMember.availability_status,
+      });
+    } else {
+      // It's a manager
+      const manager = entity as Manager;
+      setEntityType('manager');
+      setFormData({
+        full_name: manager.full_name,
+        email: manager.email,
+        phone_number: manager.phone_number || '',
+        city_slug: manager.city_slug,
+        managed_locations: manager.managed_locations.join(', '),
+      });
+    }
+    setShowAddModal(true);
+  };
+
+  const handleSaveEntity = async () => {
+    if (!formData.full_name || !formData.email || !formData.city_slug) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    try {
+      if (entityType === 'manager') {
+        if (editingId) {
+          await supabase.from('location_managers').update({
+            full_name: formData.full_name,
+            email: formData.email,
+            phone_number: formData.phone_number,
+            city_slug: formData.city_slug,
+            managed_locations: formData.managed_locations ? formData.managed_locations.split(',').map(s => s.trim()) : [],
+            updated_at: new Date().toISOString(),
+          }).eq('id', editingId);
+        } else {
+          await supabase.from('location_managers').insert([{
+            full_name: formData.full_name,
+            email: formData.email,
+            phone_number: formData.phone_number,
+            city_slug: formData.city_slug,
+            managed_locations: formData.managed_locations ? formData.managed_locations.split(',').map(s => s.trim()) : [],
+          }]);
+        }
+      } else {
+        if (editingId) {
+          await supabase.from('location_staff').update({
+            full_name: formData.full_name,
+            email: formData.email,
+            phone_number: formData.phone_number,
+            city_slug: formData.city_slug,
+            staff_role: formData.staff_role,
+            assigned_location: formData.assigned_location,
+            qualifications: formData.qualifications ? formData.qualifications.split(',').map(s => s.trim()) : [],
+            availability_status: formData.availability_status,
+            updated_at: new Date().toISOString(),
+          }).eq('id', editingId);
+        } else {
+          await supabase.from('location_staff').insert([{
+            full_name: formData.full_name,
+            email: formData.email,
+            phone_number: formData.phone_number,
+            city_slug: formData.city_slug,
+            staff_role: formData.staff_role,
+            assigned_location: formData.assigned_location,
+            qualifications: formData.qualifications ? formData.qualifications.split(',').map(s => s.trim()) : [],
+            availability_status: formData.availability_status,
+          }]);
+        }
+      }
+
+      setShowAddModal(false);
+      await loadAllData();
+    } catch (error) {
+      console.error('Error saving entity:', error);
+      alert('Error saving entity');
+    }
+  };
+
+  const handleDeleteEntity = async (id: string, type: 'manager' | 'staff') => {
+    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
+
+    try {
+      const table = type === 'manager' ? 'location_managers' : 'location_staff';
+      await supabase.from(table).update({ is_active: false }).eq('id', id);
+      await loadAllData();
+    } catch (error) {
+      console.error('Error deleting entity:', error);
+      alert('Error deleting entity');
+    }
+  };
+
+  const filteredStaff = staff.filter(s => {
+    const matchesCity = !filterCity || s.city_slug === filterCity;
+    const matchesRole = !filterRole || s.staff_role === filterRole;
+    const matchesStatus = !filterStatus || s.availability_status === filterStatus;
+    const matchesSearch = !searchTerm || 
+      s.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.email?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    return matchesCity && matchesRole && matchesStatus && matchesSearch;
+  });
+
+  if (loading) {
+    return <div className="app-shell"><p>Loading...</p></div>;
+  }
 
   return (
     <div className="app-shell">
       <header className="hero-card">
-        <div>
-          <p className="eyebrow">Operations portal</p>
-          <h1>Pari Home Healthcare</h1>
-          <p className="subtle">Route orders, manage city managers and monitor active staff in one place.</p>
-        </div>
-        <div className="summary-pill">{citySummary || 'No orders yet'}</div>
+        <h1>🏥 Admin Portal - Staff Management</h1>
+        <p>Manage admins, managers, and staff across all locations</p>
       </header>
 
-      <section className="grid">
-        <div className="panel">
-          <h2>Orders queue</h2>
-          {loading ? <p>Loading...</p> : orders.length === 0 ? <p>No orders yet.</p> : (
-            <div className="stack">
-              {orders.map((order) => (
-                <article key={order.id} className="order-card">
-                  <div className="order-topline">
-                    <strong>{order.item_name}</strong>
-                    <span className="badge">{order.status}</span>
-                  </div>
-                  <p>{order.patient_name} • {order.phone_number}</p>
-                  <p>{order.address}</p>
-                  {order.note ? <p className="muted">{order.note}</p> : null}
-                  <p className="muted">City: {order.city_slug || 'unassigned'}</p>
-                  <div className="assign-row">
-                    <select value={form.managerId} onChange={(e) => setForm((prev) => ({ ...prev, managerId: e.target.value }))}>
-                      <option value="">Select manager</option>
-                      {managers.map((manager) => (
-                        <option key={manager.id} value={manager.id}>{manager.full_name}</option>
-                      ))}
-                    </select>
-                    <select value={form.staffId} onChange={(e) => setForm((prev) => ({ ...prev, staffId: e.target.value }))}>
-                      <option value="">Select staff</option>
-                      {staff.map((member) => (
-                        <option key={member.id} value={member.id}>{member.full_name}</option>
-                      ))}
-                    </select>
-                    <select value={form.status} onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}>
-                      {statusOptions.map((option) => (
-                        <option key={option} value={option}>{option}</option>
-                      ))}
-                    </select>
-                    <button onClick={() => assignOrder(order.id)}>Assign</button>
-                  </div>
-                  {order.assigned_manager_name ? (
-                    <p className="muted">Assigned to {order.assigned_manager_name}</p>
-                  ) : null}
-                </article>
+      <div className="tabs">
+        <button 
+          className={`tab ${activeTab === 'dashboard' ? 'active' : ''}`}
+          onClick={() => setActiveTab('dashboard')}
+        >
+          Dashboard
+        </button>
+        <button 
+          className={`tab ${activeTab === 'managers' ? 'active' : ''}`}
+          onClick={() => setActiveTab('managers')}
+        >
+          Managers ({managers.length})
+        </button>
+        <button 
+          className={`tab ${activeTab === 'staff' ? 'active' : ''}`}
+          onClick={() => setActiveTab('staff')}
+        >
+          Staff ({staff.length})
+        </button>
+        <button 
+          className={`tab ${activeTab === 'transfers' ? 'active' : ''}`}
+          onClick={() => setActiveTab('transfers')}
+        >
+          Transfers
+        </button>
+      </div>
+
+      {/* Dashboard Tab */}
+      {activeTab === 'dashboard' && dashboard && (
+        <div className="dashboard-grid">
+          <div className="stat-card">
+            <h3>Total Managers</h3>
+            <p className="stat-number">{dashboard.total_managers}</p>
+          </div>
+          <div className="stat-card">
+            <h3>Total Staff</h3>
+            <p className="stat-number">{dashboard.total_staff}</p>
+          </div>
+          <div className="stat-card">
+            <h3>Active Cities</h3>
+            <p className="stat-number">{dashboard.total_cities}</p>
+          </div>
+          <div className="stat-card">
+            <h3>Staff by Role</h3>
+            <div className="role-breakdown">
+              {Object.entries(dashboard.staff_by_role || {}).map(([role, count]) => (
+                <div key={role} className="role-item">
+                  <span>{role}</span>
+                  <strong>{count}</strong>
+                </div>
               ))}
             </div>
-          )}
+          </div>
+          <div className="stat-card">
+            <h3>Staff by City</h3>
+            <div className="city-breakdown">
+              {Object.entries(dashboard.staff_by_city || {}).map(([city, count]) => (
+                <div key={city} className="city-item">
+                  <span>{city}</span>
+                  <strong>{count}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="stat-card">
+            <h3>Managers by City</h3>
+            <div className="city-breakdown">
+              {Object.entries(dashboard.managers_by_city || {}).map(([city, count]) => (
+                <div key={city} className="city-item">
+                  <span>{city}</span>
+                  <strong>{count}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      )}
 
-        <div className="panel">
-          <h2>Managers and staff</h2>
-          <h3>Managers</h3>
-          <ul>
-            {managers.map((manager) => (
-              <li key={manager.id}>{manager.full_name} • {manager.city_slug || 'all cities'}</li>
-            ))}
-          </ul>
-          <h3>Staff</h3>
-          <ul>
-            {staff.map((member) => (
-              <li key={member.id}>{member.full_name} • {member.role}</li>
-            ))}
-          </ul>
+      {/* Managers Tab */}
+      {activeTab === 'managers' && (
+        <div className="content-section">
+          <div className="section-header">
+            <h2>Location Managers</h2>
+            <button 
+              className="btn-primary"
+              onClick={() => {
+                setEntityType('manager');
+                handleAddEntity();
+              }}
+            >
+              + Add Manager
+            </button>
+          </div>
+
+          <div className="managers-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>City</th>
+                  <th>Locations</th>
+                  <th>Staff Count</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {managers.map(manager => (
+                  <tr key={manager.id}>
+                    <td>{manager.full_name}</td>
+                    <td>{manager.email}</td>
+                    <td>{manager.phone_number || '-'}</td>
+                    <td>{manager.city_slug}</td>
+                    <td>{manager.managed_locations.join(', ') || '-'}</td>
+                    <td>{manager.staff_count}</td>
+                    <td>
+                      <span className={`status ${manager.is_active ? 'active' : 'inactive'}`}>
+                        {manager.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </td>
+                    <td className="actions">
+                      <button 
+                        className="btn-small"
+                        onClick={() => handleEditEntity(manager)}
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        className="btn-danger-small"
+                        onClick={() => handleDeleteEntity(manager.id, 'manager')}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </section>
+      )}
+
+      {/* Staff Tab */}
+      {activeTab === 'staff' && (
+        <div className="content-section">
+          <div className="section-header">
+            <h2>Location Staff</h2>
+            <button 
+              className="btn-primary"
+              onClick={() => {
+                setEntityType('staff');
+                handleAddEntity();
+              }}
+            >
+              + Add Staff
+            </button>
+          </div>
+
+          <div className="filters">
+            <input
+              type="text"
+              placeholder="Search by name or email..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="filter-input"
+            />
+            <select 
+              value={filterCity}
+              onChange={e => setFilterCity(e.target.value)}
+              className="filter-select"
+            >
+              <option value="">All Cities</option>
+              {cities.map(city => (
+                <option key={city.slug} value={city.slug}>{city.name}</option>
+              ))}
+            </select>
+            <select 
+              value={filterRole}
+              onChange={e => setFilterRole(e.target.value)}
+              className="filter-select"
+            >
+              <option value="">All Roles</option>
+              {staffRoles.map(role => (
+                <option key={role} value={role}>{role}</option>
+              ))}
+            </select>
+            <select 
+              value={filterStatus}
+              onChange={e => setFilterStatus(e.target.value)}
+              className="filter-select"
+            >
+              <option value="">All Status</option>
+              {availabilityStatus.map(status => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+            <button 
+              className="btn-secondary"
+              onClick={() => {
+                setFilterCity('');
+                setFilterRole('');
+                setFilterStatus('');
+                setSearchTerm('');
+              }}
+            >
+              Clear Filters
+            </button>
+          </div>
+
+          <div className="staff-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Role</th>
+                  <th>City</th>
+                  <th>Location</th>
+                  <th>Status</th>
+                  <th>Qualifications</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredStaff.map(staffMember => (
+                  <tr key={staffMember.id}>
+                    <td>{staffMember.full_name}</td>
+                    <td>{staffMember.email || '-'}</td>
+                    <td>{staffMember.phone_number || '-'}</td>
+                    <td><span className="badge badge-role">{staffMember.staff_role}</span></td>
+                    <td>{staffMember.city_slug}</td>
+                    <td>{staffMember.assigned_location || '-'}</td>
+                    <td>
+                      <span className={`status ${staffMember.availability_status === 'available' ? 'active' : 'inactive'}`}>
+                        {staffMember.availability_status}
+                      </span>
+                    </td>
+                    <td>{staffMember.qualifications.join(', ') || '-'}</td>
+                    <td className="actions">
+                      <button 
+                        className="btn-small"
+                        onClick={() => handleEditEntity(staffMember)}
+                      >
+                        Edit
+                      </button>
+                      <button 
+                        className="btn-danger-small"
+                        onClick={() => handleDeleteEntity(staffMember.id, 'staff')}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filteredStaff.length === 0 && (
+              <div className="no-data">No staff found matching your filters</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Transfers Tab */}
+      {activeTab === 'transfers' && (
+        <div className="content-section">
+          <h2>Staff Transfers</h2>
+          <p className="placeholder">Transfer staff between managers or cities. Coming soon with detailed transfer workflows.</p>
+        </div>
+      )}
+
+      {/* Add/Edit Modal */}
+      {showAddModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>{editingId ? 'Edit' : 'Add'} {entityType === 'manager' ? 'Manager' : 'Staff'}</h2>
+            
+            <div className="form-group">
+              <label>Full Name *</label>
+              <input
+                type="text"
+                value={formData.full_name}
+                onChange={e => setFormData({...formData, full_name: e.target.value})}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Email *</label>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={e => setFormData({...formData, email: e.target.value})}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Phone Number</label>
+              <input
+                type="tel"
+                value={formData.phone_number}
+                onChange={e => setFormData({...formData, phone_number: e.target.value})}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>City *</label>
+              <select
+                value={formData.city_slug}
+                onChange={e => setFormData({...formData, city_slug: e.target.value})}
+              >
+                <option value="">Select City</option>
+                {cities.map(city => (
+                  <option key={city.slug} value={city.slug}>{city.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {entityType === 'manager' ? (
+              <div className="form-group">
+                <label>Managed Locations (comma-separated)</label>
+                <input
+                  type="text"
+                  value={formData.managed_locations}
+                  onChange={e => setFormData({...formData, managed_locations: e.target.value})}
+                  placeholder="e.g., North Center, South Center"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="form-group">
+                  <label>Role</label>
+                  <select
+                    value={formData.staff_role}
+                    onChange={e => setFormData({...formData, staff_role: e.target.value})}
+                  >
+                    {staffRoles.map(role => (
+                      <option key={role} value={role}>{role}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Assigned Location</label>
+                  <input
+                    type="text"
+                    value={formData.assigned_location}
+                    onChange={e => setFormData({...formData, assigned_location: e.target.value})}
+                    placeholder="e.g., North Center"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Qualifications (comma-separated)</label>
+                  <input
+                    type="text"
+                    value={formData.qualifications}
+                    onChange={e => setFormData({...formData, qualifications: e.target.value})}
+                    placeholder="e.g., BSN, RN License, First Aid"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label>Availability Status</label>
+                  <select
+                    value={formData.availability_status}
+                    onChange={e => setFormData({...formData, availability_status: e.target.value})}
+                  >
+                    {availabilityStatus.map(status => (
+                      <option key={status} value={status}>{status}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            )}
+
+            <div className="modal-actions">
+              <button className="btn-primary" onClick={handleSaveEntity}>
+                Save
+              </button>
+              <button className="btn-secondary" onClick={() => setShowAddModal(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
