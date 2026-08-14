@@ -55,6 +55,33 @@ npm run build          # tsc -b && vite build
 cd admin && npm run build
 ```
 
+## Deployment
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds both apps and publishes
+them as one GitHub Pages site on every push to `main`:
+
+| Path | App |
+|---|---|
+| `/` | Patient app |
+| `/ops/` | Operations portal — login-gated and `noindex` |
+
+One-time setup in the repository:
+
+1. **Settings → Pages → Source → GitHub Actions**
+2. **Settings → Secrets and variables → Actions**, add:
+   - `VITE_SUPABASE_URL` — the bare project URL, no `/rest/v1` suffix
+   - `VITE_SUPABASE_ANON_KEY`
+
+The workflow fails fast with a clear message if either secret is missing, rather than
+silently shipping a patient app stuck on demo content.
+
+Both values are compiled into the JavaScript bundle. That is expected — the anon key is a
+public credential, and row level security is what actually protects the data. The
+`service_role` key must never appear in either app.
+
+Pages serves a project site under `/<repo>/`, so CI sets `PUBLIC_BASE` to prefix the asset
+URLs. Local dev and local builds are unaffected and stay at `/`.
+
 ## Roles
 
 `profiles.role` decides everything. The ops portal routes on it, and the database enforces the same

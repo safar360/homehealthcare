@@ -55,3 +55,6 @@ dist/
 # Compiled vite config output
 vite.config.d.ts
 vite.config.js
+
+# Assembled Pages artifact (built by CI)
+site/

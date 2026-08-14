@@ -1,0 +1,106 @@
+name: Deploy to GitHub Pages
+
+# Both apps are static Vite builds that talk directly to Supabase, so there is
+# nothing to run server-side. They ship as one Pages site:
+#   /            patient app
+#   /ops/        operations portal (login-gated, noindex)
+on:
+  push:
+    branches: [main, consolidate-react-platform]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never let two deploys race; queue instead of cancelling a run that is already
+# publishing.
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            admin/package-lock.json
+
+      - name: Fail early if Supabase config is missing
+        env:
+          URL: ${{ secrets.VITE_SUPABASE_URL }}
+          KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::error::Set the VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY repository secrets (Settings -> Secrets and variables -> Actions). Without them the patient app silently ships demo content and the ops portal cannot sign anyone in."
+            exit 1
+          fi
+          case "$URL" in
+            */rest/v1|*/rest/v1/)
+              echo "::error::VITE_SUPABASE_URL must be the bare project URL. Remove the /rest/v1 suffix; supabase-js appends it itself."
+              exit 1 ;;
+          esac
+
+      # ---------------------------------------------------------------- patient
+      - name: Install (patient app)
+        run: npm ci
+
+      - name: Build patient app
+        env:
+          PUBLIC_BASE: /${{ github.event.repository.name }}/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      # -------------------------------------------------------------------- ops
+      - name: Install (ops portal)
+        working-directory: admin
+        run: npm ci
+
+      - name: Build ops portal
+        working-directory: admin
+        env:
+          PUBLIC_BASE: /${{ github.event.repository.name }}/ops/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      # --------------------------------------------------------------- assemble
+      - name: Assemble the site
+        run: |
+          rm -rf site
+          mkdir -p site/ops
+          cp -r dist/. site/
+          cp -r admin/dist/. site/ops/
+          # Pages runs Jekyll by default, which strips files starting with "_".
+          touch site/.nojekyll
+          echo "--- published tree ---"
+          find site -type f | sort
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Show the URLs
+        run: |
+          echo "Patient app : ${{ steps.deployment.outputs.page_url }}"
+          echo "Ops portal  : ${{ steps.deployment.outputs.page_url }}ops/"
