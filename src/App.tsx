@@ -67,28 +67,6 @@ type SocialLink = {
   url: string;
 };
 
-type TeamMember = {
-  id: string;
-  full_name: string;
-  email?: string;
-  phone_number?: string;
-  role: 'manager' | 'staff';
-  city_slug?: string;
-  is_active: boolean;
-  created_at: string;
-};
-
-type Order = {
-  id: string;
-  item_name: string;
-  patient_name: string;
-  phone_number: string;
-  city_slug?: string;
-  status: string;
-  assigned_manager?: string | null;
-  assigned_staff_member?: string | null;
-};
-
 type HomeContent = {
   cities: City[];
   sections: HomeSection[];
@@ -164,18 +142,6 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [message, setMessage] = useState('Loading patient home content...');
   const [activeSlide, setActiveSlide] = useState(0);
-  const [currentPage, setCurrentPage] = useState<'patient' | 'admin'>('patient');
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [newMember, setNewMember] = useState({
-    full_name: '',
-    email: '',
-    phone_number: '',
-    role: 'staff' as 'staff' | 'manager',
-    city_slug: '',
-  });
-  const [adminLoading, setAdminLoading] = useState(false);
-  const [adminMessage, setAdminMessage] = useState('');
 
   useEffect(() => {
     const loadContent = async () => {
@@ -206,38 +172,6 @@ function App() {
 
   const selectedCity = useMemo(() => content.cities[0], [content.cities]);
 
-  const fetchAdminData = async () => {
-    setAdminLoading(true);
-    setAdminMessage('Loading admin roster...');
-
-    const [teamResponse, orderResponse] = await Promise.all([
-      supabase.from('team_members').select('*').order('sort_order', { ascending: true }),
-      supabase.from('orders').select('id,item_name,patient_name,phone_number,city_slug,status,assigned_manager,assigned_staff_member').order('created_at', { ascending: false }),
-    ]);
-
-    if (teamResponse.error) {
-      setAdminMessage('Unable to load team members; check Supabase auth/policies.');
-      setTeamMembers([]);
-    } else {
-      setTeamMembers(teamResponse.data ?? []);
-    }
-
-    if (orderResponse.error) {
-      setAdminMessage((prev) => prev + ' Orders may not be visible until authenticated as staff/admin.');
-      setOrders([]);
-    } else {
-      setOrders(orderResponse.data ?? []);
-    }
-
-    setAdminLoading(false);
-  };
-
-  useEffect(() => {
-    if (currentPage === 'admin') {
-      void fetchAdminData();
-    }
-  }, [currentPage]);
-
   const sectionOrder = content.sections.length
     ? content.sections
     : demoContent.sections;
@@ -253,36 +187,6 @@ function App() {
       const target = document.getElementById(action.action_value);
       target?.scrollIntoView({ behavior: 'smooth' });
     }
-  };
-
-  const createTeamMember = async () => {
-    if (!newMember.full_name || !newMember.city_slug) {
-      setAdminMessage('Please enter a name and select a city.');
-      return;
-    }
-
-    setAdminLoading(true);
-    const { error } = await supabase.from('team_members').insert([newMember]);
-    if (error) {
-      setAdminMessage('Unable to save the team member. Check Supabase policies.');
-    } else {
-      setAdminMessage('Team member saved successfully. Refreshing roster.');
-      setNewMember({ full_name: '', email: '', phone_number: '', role: 'staff', city_slug: content.cities?.[0]?.slug ?? '' });
-      await fetchAdminData();
-    }
-    setAdminLoading(false);
-  };
-
-  const assignManager = async (orderId: string, managerId: string) => {
-    setAdminLoading(true);
-    const { error } = await supabase.from('orders').update({ assigned_manager: managerId, status: 'assigned' }).eq('id', orderId);
-    if (error) {
-      setAdminMessage('Unable to assign the manager. Confirm authenticated access and table policies.');
-    } else {
-      setAdminMessage('Manager assigned successfully.');
-      await fetchAdminData();
-    }
-    setAdminLoading(false);
   };
 
   const renderSection = (section: HomeSection) => {
@@ -459,168 +363,16 @@ function App() {
         return null;
     }
   };
-
-  const renderAdminPortal = () => {
-    const managersByCity = content.cities.map((city) => ({
-      city,
-      managers: teamMembers.filter((member) => member.role === 'manager' && member.city_slug === city.slug),
-      staff: teamMembers.filter((member) => member.role === 'staff' && member.city_slug === city.slug),
-    }));
-
-    return (
-      <div className="admin-shell">
-        <section className="card admin-hero">
-          <div className="admin-hero-copy">
-            <p className="eyebrow">Admin portal</p>
-            <h1>Manage city teams, managers, and order assignment</h1>
-            <p className="hero-copy">
-              Add managers and staff per location, then assign new orders to the right team.
-            </p>
-            <div className="hero-pill">{adminLoading ? 'Loading admin data...' : 'Admin roster loaded'}</div>
-            {adminMessage && <div className="status-pill">{adminMessage}</div>}
-          </div>
-        </section>
-
-        <section className="card admin-grid">
-          <div className="admin-column">
-            <h2>Add manager or staff</h2>
-            <div className="form-grid">
-              <label>
-                Name
-                <input
-                  type="text"
-                  value={newMember.full_name}
-                  onChange={(event) => setNewMember((prev) => ({ ...prev, full_name: event.target.value }))}
-                />
-              </label>
-              <label>
-                Email
-                <input
-                  type="email"
-                  value={newMember.email}
-                  onChange={(event) => setNewMember((prev) => ({ ...prev, email: event.target.value }))}
-                />
-              </label>
-              <label>
-                Phone
-                <input
-                  type="text"
-                  value={newMember.phone_number}
-                  onChange={(event) => setNewMember((prev) => ({ ...prev, phone_number: event.target.value }))}
-                />
-              </label>
-              <label>
-                Role
-                <select
-                  value={newMember.role}
-                  onChange={(event) => setNewMember((prev) => ({ ...prev, role: event.target.value as 'staff' | 'manager' }))}
-                >
-                  <option value="manager">Manager</option>
-                  <option value="staff">Staff</option>
-                </select>
-              </label>
-              <label>
-                Location
-                <select
-                  value={newMember.city_slug}
-                  onChange={(event) => setNewMember((prev) => ({ ...prev, city_slug: event.target.value }))}
-                >
-                  <option value="">Choose a city</option>
-                  {content.cities.map((city) => (
-                    <option key={city.slug} value={city.slug}>
-                      {city.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button className="btn btn-primary" type="button" onClick={createTeamMember} disabled={adminLoading}>
-              Save team member
-            </button>
-          </div>
-
-          <div className="admin-column">
-            <h2>Team roster by location</h2>
-            {managersByCity.map(({ city, managers, staff }) => (
-              <div key={city.slug} className="city-roster">
-                <h3>{city.name}</h3>
-                <p className="muted">Managers: {managers.length} • Staff: {staff.length}</p>
-                <div className="staff-list">
-                  {[...managers, ...staff].map((member) => (
-                    <div key={member.id} className="staff-card">
-                      <strong>{member.full_name}</strong>
-                      <span>{member.role}</span>
-                      <small>{member.email ?? member.phone_number ?? 'No contact'}</small>
-                    </div>
-                  ))}
-                  {!managers.length && !staff.length && <p className="muted">No team members added yet for this city.</p>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="card">
-          <h2>Order assignment</h2>
-          <p className="muted">
-            Assign orders to a manager. This section works when a signed-in staff/admin session is available.
-          </p>
-          <div className="orders-list">
-            {orders.length === 0 ? (
-              <p className="muted">No orders available or permission denied. Sign in as staff/admin to load orders.</p>
-            ) : (
-              orders.map((order) => (
-                <div key={order.id} className="order-card">
-                  <div className="order-meta">
-                    <strong>{order.item_name}</strong>
-                    <span>{order.city_slug ?? 'Unknown location'}</span>
-                  </div>
-                  <div className="order-copy">
-                    <p>{order.patient_name} · {order.phone_number}</p>
-                    <p className="muted">Status: {order.status}</p>
-                  </div>
-                  <div className="order-actions">
-                    <select
-                      value={order.assigned_manager ?? ''}
-                      onChange={(event) => assignManager(order.id, event.target.value)}
-                    >
-                      <option value="">Assign manager</option>
-                      {teamMembers.filter((member) => member.role === 'manager').map((manager) => (
-                        <option key={manager.id} value={manager.id}>
-                          {manager.full_name} ({manager.city_slug})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-      </div>
-    );
-  };
-
   return (
     <div className="app-shell">
-      <div className="page-tabs">
-        <button className={currentPage === 'patient' ? 'tab active' : 'tab'} type="button" onClick={() => setCurrentPage('patient')}>
-          Patient app
-        </button>
-        <button className={currentPage === 'admin' ? 'tab active' : 'tab'} type="button" onClick={() => setCurrentPage('admin')}>
-          Admin portal
-        </button>
-      </div>
-      {currentPage === 'patient' ? (
-        <>
-          {renderSection({ key: 'hero', title: 'Hero', subtitle: content.sections.find((section) => section.key === 'hero')?.subtitle })}
-          <main className="page-grid">
-            {sectionOrder.map((section) => section.key !== 'hero' && renderSection(section))}
-          </main>
-        </>
-      ) : (
-        renderAdminPortal()
-      )}
+      {renderSection({
+        key: 'hero',
+        title: 'Hero',
+        subtitle: content.sections.find((section) => section.key === 'hero')?.subtitle,
+      })}
+      <main className="page-grid">
+        {sectionOrder.map((section) => section.key !== 'hero' && renderSection(section))}
+      </main>
     </div>
   );
 }
