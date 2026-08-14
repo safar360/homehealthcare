@@ -85,7 +85,7 @@ The system should also support location-based dispatching, geo-fencing, service 
 
 ## 6. Technical Architecture
 Recommended zero-cost starter stack:
-- Frontend app: Flutter for mobile and web
+- Frontend apps: React + TypeScript + Vite, responsive web (mobile-first)
 - Backend and database: Supabase with PostgreSQL
 - Authentication: Supabase Auth with role-based access
 - Notifications: Firebase Cloud Messaging
