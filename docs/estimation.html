@@ -1,0 +1,774 @@
+<title>Pari Home Healthcare — Phased Estimate</title>
+
+<style>
+  :root {
+    --paper:      #F7F9F8;
+    --card:       #FFFFFF;
+    --ink:        #101B19;
+    --ink-soft:   #4A5D58;
+    --ink-faint:  #7C8D88;
+    --rule:       #DDE5E2;
+    --rule-soft:  #EBF0EE;
+
+    --teal:       #0E7C66;
+    --teal-deep:  #075444;
+    --indigo:     #4338CA;
+    --amber:      #B45309;
+    --slate:      #64748B;
+
+    --ok-bg:      #DCF3EA;
+    --ok-fg:      #075444;
+    --warn-bg:    #FBEBD2;
+    --warn-fg:    #8A3F07;
+
+    --serif: Georgia, "Iowan Old Style", "Times New Roman", ui-serif, serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+    --shadow: 0 1px 2px rgb(16 27 25 / 5%), 0 8px 24px -12px rgb(16 27 25 / 12%);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:     #0C1513;
+      --card:      #131F1C;
+      --ink:       #E8EFEC;
+      --ink-soft:  #A3B5B0;
+      --ink-faint: #71827D;
+      --rule:      #24352F;
+      --rule-soft: #1B2A26;
+
+      --teal:      #34D3AC;
+      --teal-deep: #7EE8CB;
+      --indigo:    #A5B4FC;
+      --amber:     #FBBF24;
+      --slate:     #94A3B8;
+
+      --ok-bg:     #0B3A2E;
+      --ok-fg:     #7EE8CB;
+      --warn-bg:   #402A0C;
+      --warn-fg:   #FBBF24;
+
+      --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px -14px rgb(0 0 0 / 60%);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:#0C1513; --card:#131F1C; --ink:#E8EFEC; --ink-soft:#A3B5B0;
+    --ink-faint:#71827D; --rule:#24352F; --rule-soft:#1B2A26;
+    --teal:#34D3AC; --teal-deep:#7EE8CB; --indigo:#A5B4FC; --amber:#FBBF24; --slate:#94A3B8;
+    --ok-bg:#0B3A2E; --ok-fg:#7EE8CB; --warn-bg:#402A0C; --warn-fg:#FBBF24;
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 10px 30px -14px rgb(0 0 0 / 60%);
+  }
+
+  :root[data-theme="light"] {
+    --paper:#F7F9F8; --card:#FFFFFF; --ink:#101B19; --ink-soft:#4A5D58;
+    --ink-faint:#7C8D88; --rule:#DDE5E2; --rule-soft:#EBF0EE;
+    --teal:#0E7C66; --teal-deep:#075444; --indigo:#4338CA; --amber:#B45309; --slate:#64748B;
+    --ok-bg:#DCF3EA; --ok-fg:#075444; --warn-bg:#FBEBD2; --warn-fg:#8A3F07;
+    --shadow: 0 1px 2px rgb(16 27 25 / 5%), 0 8px 24px -12px rgb(16 27 25 / 12%);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .doc {
+    max-width: 60rem;
+    margin: 0 auto;
+    padding: clamp(2rem, 5vw, 4.5rem) clamp(1.1rem, 4vw, 3rem) 5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 3.5rem;
+  }
+
+  /* ---------------------------------------------------------- masthead */
+
+  .masthead { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  .eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--teal);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: clamp(2.1rem, 5.5vw, 3.4rem);
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .standfirst {
+    font-size: 1.06rem;
+    color: var(--ink-soft);
+    max-width: 44rem;
+    margin: 0;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 2rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+  }
+  .meta b { color: var(--ink-soft); font-weight: 600; }
+
+  /* ------------------------------------------------------- figure band */
+
+  .figures {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .figure { background: var(--card); padding: 1.4rem 1.3rem; }
+
+  .figure dt {
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--ink-faint);
+    margin: 0 0 0.5rem;
+  }
+
+  .figure dd {
+    margin: 0;
+    font-family: var(--serif);
+    font-size: 1.9rem;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .figure small {
+    display: block;
+    font-family: var(--sans);
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    margin-top: 0.35rem;
+    line-height: 1.45;
+  }
+
+  /* --------------------------------------------------------- sections */
+
+  section { display: flex; flex-direction: column; gap: 1.25rem; }
+
+  h2 {
+    font-family: var(--serif);
+    font-weight: 400;
+    font-size: 1.65rem;
+    letter-spacing: -0.01em;
+    margin: 0;
+    padding-bottom: 0.6rem;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  h3 { font-size: 1rem; font-weight: 700; margin: 0; letter-spacing: -0.005em; }
+
+  p { margin: 0; max-width: 46rem; }
+  .lede { color: var(--ink-soft); }
+
+  /* ----------------------------------------------------------- phases */
+
+  .phases { display: flex; flex-direction: column; gap: 1.5rem; }
+
+  .phase {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--phase);
+    border-radius: 3px;
+    padding: 1.6rem clamp(1.1rem, 3vw, 2rem);
+    box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+  }
+
+  /* Accent saturation falls with distance: the further out the phase, the
+     less certain the estimate, and the quieter it is on the page. */
+  .p0 { --phase: var(--teal); }
+  .p1 { --phase: var(--indigo); }
+  .p2 { --phase: var(--amber); }
+  .p3 { --phase: var(--slate); }
+
+  .phase-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+  }
+
+  .phase-no {
+    font-family: var(--serif);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--phase);
+    letter-spacing: 0.04em;
+  }
+
+  .phase-name {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    letter-spacing: -0.015em;
+    margin: 0;
+    flex: 1 1 14rem;
+  }
+
+  .chip {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.25rem 0.6rem;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .chip-done { background: var(--ok-bg); color: var(--ok-fg); }
+  .chip-next { background: var(--warn-bg); color: var(--warn-fg); }
+  .chip-later { background: var(--rule-soft); color: var(--ink-faint); }
+
+  .phase-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .phase-stats div { background: var(--card); padding: 0.75rem 0.9rem; }
+  .phase-stats dt {
+    font-size: 0.66rem; letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--ink-faint); font-weight: 700; margin: 0 0 0.2rem;
+  }
+  .phase-stats dd {
+    margin: 0; font-family: var(--mono); font-size: 0.95rem; font-weight: 600;
+  }
+
+  .cols {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1.4rem;
+  }
+
+  ul { margin: 0.5rem 0 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.32rem; }
+  li { color: var(--ink-soft); }
+  li::marker { color: var(--phase, var(--teal)); }
+
+  .label {
+    font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase;
+    font-weight: 700; color: var(--ink-faint);
+  }
+
+  .exit {
+    background: var(--rule-soft);
+    border-radius: 2px;
+    padding: 0.85rem 1rem;
+    font-size: 0.92rem;
+    color: var(--ink-soft);
+  }
+  .exit b { color: var(--ink); }
+
+  /* ---------------------------------------------------------- tables */
+
+  .scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 3px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.92rem; background: var(--card); }
+
+  th {
+    text-align: left;
+    font-size: 0.68rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 700;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--rule);
+    white-space: nowrap;
+  }
+
+  td { padding: 0.72rem 1rem; border-bottom: 1px solid var(--rule-soft); }
+  tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-family: var(--mono); white-space: nowrap; }
+  tfoot td { border-top: 2px solid var(--ink); font-weight: 700; background: var(--rule-soft); }
+
+  .free { color: var(--teal); font-weight: 700; }
+
+  /* ----------------------------------------------------------- notes */
+
+  .note {
+    border-left: 3px solid var(--amber);
+    background: var(--card);
+    border-radius: 0 3px 3px 0;
+    padding: 1rem 1.2rem;
+    font-size: 0.93rem;
+    color: var(--ink-soft);
+  }
+  .note b { color: var(--ink); }
+
+  .ceiling {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    gap: 1rem;
+  }
+  .rung {
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-top: 3px solid var(--rung-c);
+    border-radius: 3px;
+    padding: 1.1rem 1.2rem;
+  }
+  .rung .amt {
+    font-family: var(--serif);
+    font-size: 1.7rem;
+    line-height: 1.15;
+    color: var(--rung-c);
+  }
+  .rung .when { font-size: 0.83rem; color: var(--ink-faint); margin-top: 0.3rem; }
+  .r-now { --rung-c: var(--teal); }
+  .r-next { --rung-c: var(--indigo); }
+  .r-max { --rung-c: var(--slate); }
+
+  footer {
+    border-top: 1px solid var(--rule);
+    padding-top: 1.5rem;
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  @media print {
+    body { background: #fff; }
+    .phase, .figure { box-shadow: none; }
+    .doc { gap: 2rem; }
+  }
+</style>
+
+<div class="doc">
+
+  <header class="masthead">
+    <p class="eyebrow">Delivery estimate &middot; Confidential</p>
+    <h1>Home healthcare operations platform</h1>
+    <p class="standfirst">
+      A phased build for managing care staff, managers and customers across Madhya Pradesh —
+      what has been delivered, what each remaining stage costs, and where the running cost
+      settles once it is live.
+    </p>
+    <div class="meta">
+      <span><b>Prepared for</b> Pari Home Healthcare</span>
+      <span><b>Date</b> 14 August 2026</span>
+      <span><b>Pilot city</b> Bhopal</span>
+      <span><b>Currency</b> INR, USD where billed abroad</span>
+    </div>
+  </header>
+
+  <dl class="figures">
+    <div class="figure">
+      <dt>Delivered so far</dt>
+      <dd>Phase&nbsp;0</dd>
+      <small>Foundation built, deployed and security-tested against live data</small>
+    </div>
+    <div class="figure">
+      <dt>To reach pilot</dt>
+      <dd>7 days</dd>
+      <small>Remaining effort before Bhopal managers can be onboarded</small>
+    </div>
+    <div class="figure">
+      <dt>Full roadmap</dt>
+      <dd>53 days</dd>
+      <small>Phases 0&ndash;3 combined, including contingency</small>
+    </div>
+    <div class="figure">
+      <dt>Running cost at pilot</dt>
+      <dd class="free">&#8377;0</dd>
+      <small>Per month. Rises to ~&#8377;2,200 once customer records are stored</small>
+    </div>
+  </dl>
+
+  <section>
+    <h2>The shape of the investment</h2>
+    <p class="lede">
+      The platform is built on managed services that are free at this scale, so the spend is
+      almost entirely people, not infrastructure. Monthly running cost stays under
+      &#8377;2,200 through every phase in this document, and the worst case is capped — the
+      system can be moved onto a self-managed server for roughly &#8377;700 a month without
+      rewriting anything.
+    </p>
+    <div class="note">
+      <b>Nothing here bills by usage.</b> Costs are fixed monthly amounts, not per-request
+      charges, so adding cities or staff does not increase the bill. This was a deliberate
+      technical choice — several popular alternatives charge per database read, where a busy
+      dashboard can produce an unpredictable invoice.
+    </div>
+  </section>
+
+  <section>
+    <h2>Phases</h2>
+
+    <div class="phases">
+
+      <!-- ---------------------------------------------------- Phase 0 -->
+      <article class="phase p0">
+        <div class="phase-head">
+          <span class="phase-no">PHASE 0</span>
+          <h3 class="phase-name">Pilot &mdash; Bhopal</h3>
+          <span class="chip chip-done">Foundation delivered</span>
+        </div>
+
+        <dl class="phase-stats">
+          <div><dt>Effort remaining</dt><dd>7 days</dd></div>
+          <div><dt>Elapsed</dt><dd>~2 weeks</dd></div>
+          <div><dt>Running cost</dt><dd class="free">&#8377;0/mo</dd></div>
+          <div><dt>One-time</dt><dd>&#8377;1,000/yr</dd></div>
+        </dl>
+
+        <div class="cols">
+          <div>
+            <span class="label">Already built</span>
+            <ul>
+              <li>Operations portal with separate admin, manager and staff views</li>
+              <li>Staff and manager records organised by city and area</li>
+              <li>Admin-managed cities and job roles</li>
+              <li>Dashboard showing coverage per location, with gaps flagged</li>
+              <li>Customer-facing service catalogue and enquiry capture</li>
+              <li>Automated deployment and nightly encrypted backups</li>
+            </ul>
+          </div>
+          <div>
+            <span class="label">Remaining for pilot</span>
+            <ul>
+              <li>Admin can create and revoke staff logins without developer help</li>
+              <li>Portal moved to its own web address</li>
+              <li>One-time passcode required before the portal will open</li>
+              <li>Guided handover when a manager leaves</li>
+              <li>Test accounts removed, password rules tightened</li>
+              <li>Training material and pilot support</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="exit">
+          <b>Ready when:</b> an administrator can onboard a Bhopal manager unaided, that
+          manager signs in with a passcode, records their team, and can be handed over
+          cleanly if they leave.
+        </p>
+      </article>
+
+      <!-- ---------------------------------------------------- Phase 1 -->
+      <article class="phase p1">
+        <div class="phase-head">
+          <span class="phase-no">PHASE 1</span>
+          <h3 class="phase-name">Customers and active accounts</h3>
+          <span class="chip chip-next">Next</span>
+        </div>
+
+        <dl class="phase-stats">
+          <div><dt>Effort</dt><dd>10 days</dd></div>
+          <div><dt>Elapsed</dt><dd>~2.5 weeks</dd></div>
+          <div><dt>Running cost</dt><dd>&#8377;2,200/mo</dd></div>
+          <div><dt>Starts</dt><dd>After pilot</dd></div>
+        </dl>
+
+        <div class="cols">
+          <div>
+            <span class="label">Scope</span>
+            <ul>
+              <li>Managers record customers in their own area</li>
+              <li>Lifecycle: enquiry &rarr; active &rarr; paused &rarr; closed</li>
+              <li>Duplicate detection on phone number</li>
+              <li>Existing enquiries matched into customer records</li>
+              <li>Admin reporting: active customers per city</li>
+            </ul>
+          </div>
+          <div>
+            <span class="label">Why now</span>
+            <ul>
+              <li>Answers &ldquo;how many active customers do we have, and where?&rdquo;</li>
+              <li>Reuses the existing city and manager structure, so no rework</li>
+              <li>Contact and service details only &mdash; no medical records, which
+                  keeps the compliance burden small</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="exit">
+          <b>Ready when:</b> an administrator can see active customer numbers per city,
+          sourced from what managers enter day to day.
+        </p>
+      </article>
+
+      <!-- ---------------------------------------------------- Phase 2 -->
+      <article class="phase p2">
+        <div class="phase-head">
+          <span class="phase-no">PHASE 2</span>
+          <h3 class="phase-name">Visits and scheduling</h3>
+          <span class="chip chip-later">Planned</span>
+        </div>
+
+        <dl class="phase-stats">
+          <div><dt>Effort</dt><dd>20 days</dd></div>
+          <div><dt>Elapsed</dt><dd>~5 weeks</dd></div>
+          <div><dt>Running cost</dt><dd>&#8377;2,200/mo</dd></div>
+          <div><dt>Confidence</dt><dd>Indicative</dd></div>
+        </dl>
+
+        <div class="cols">
+          <div>
+            <span class="label">Scope</span>
+            <ul>
+              <li>Scheduled visits linking a customer, a staff member and a time</li>
+              <li>Managers assign and reschedule work</li>
+              <li>Staff see their day and mark visits complete</li>
+              <li>Location-verified check-in and check-out</li>
+              <li>Admin oversight of completion and no-shows</li>
+            </ul>
+          </div>
+          <div>
+            <span class="label">Why it matters</span>
+            <ul>
+              <li>This is what turns an enquiry into scheduled, billable work</li>
+              <li>Everything customer-facing depends on it &mdash; a family cannot be
+                  shown a schedule that does not exist</li>
+              <li>Largest single stage; worth splitting into two releases</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="exit">
+          <b>Ready when:</b> a manager schedules a visit, the assigned staff member sees it,
+          checks in on site, and the admin sees it completed.
+        </p>
+      </article>
+
+      <!-- ---------------------------------------------------- Phase 3 -->
+      <article class="phase p3">
+        <div class="phase-head">
+          <span class="phase-no">PHASE 3</span>
+          <h3 class="phase-name">Customer app and notifications</h3>
+          <span class="chip chip-later">Planned</span>
+        </div>
+
+        <dl class="phase-stats">
+          <div><dt>Effort</dt><dd>16 days</dd></div>
+          <div><dt>Elapsed</dt><dd>~4 weeks</dd></div>
+          <div><dt>Running cost</dt><dd>&#8377;2,200/mo</dd></div>
+          <div><dt>Confidence</dt><dd>Indicative</dd></div>
+        </dl>
+
+        <div class="cols">
+          <div>
+            <span class="label">Scope</span>
+            <ul>
+              <li>Customer login, care plan and upcoming visits</li>
+              <li>Staff arrival status</li>
+              <li>Support and emergency requests</li>
+              <li>Installable phone app</li>
+              <li>Push notifications for visit updates</li>
+            </ul>
+          </div>
+          <div>
+            <span class="label">Additional costs</span>
+            <ul>
+              <li>Google Play developer account &mdash; &#8377;2,100 one-time</li>
+              <li>Apple developer account &mdash; &#8377;8,300/year, only if iOS is wanted</li>
+              <li>Push notifications are free at this volume</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="exit">
+          <b>Ready when:</b> a family can open the app, see their schedule and who is coming,
+          and reach the care team without phoning the office.
+        </p>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Development effort and cost</h2>
+    <p class="lede">
+      Effort is stated in person-days. Cost depends on your day rate, so three scenarios are
+      shown &mdash; substitute your actual figure to get the real number.
+    </p>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th>Phase</th>
+            <th class="num">Days</th>
+            <th class="num">at &#8377;4,000</th>
+            <th class="num">at &#8377;6,000</th>
+            <th class="num">at &#8377;8,000</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>0</b> &nbsp;Pilot &mdash; Bhopal <span class="chip chip-done">remaining</span></td>
+            <td class="num">7</td>
+            <td class="num">28,000</td>
+            <td class="num">42,000</td>
+            <td class="num">56,000</td>
+          </tr>
+          <tr>
+            <td><b>1</b> &nbsp;Customers and active accounts</td>
+            <td class="num">10</td>
+            <td class="num">40,000</td>
+            <td class="num">60,000</td>
+            <td class="num">80,000</td>
+          </tr>
+          <tr>
+            <td><b>2</b> &nbsp;Visits and scheduling</td>
+            <td class="num">20</td>
+            <td class="num">80,000</td>
+            <td class="num">1,20,000</td>
+            <td class="num">1,60,000</td>
+          </tr>
+          <tr>
+            <td><b>3</b> &nbsp;Customer app and notifications</td>
+            <td class="num">16</td>
+            <td class="num">64,000</td>
+            <td class="num">96,000</td>
+            <td class="num">1,28,000</td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td>Total remaining</td>
+            <td class="num">53</td>
+            <td class="num">2,12,000</td>
+            <td class="num">3,18,000</td>
+            <td class="num">4,24,000</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="note">
+      <b>Contingency is already inside these numbers</b> &mdash; roughly 20&ndash;25% per
+      phase. Phases 0 and 1 are firm, because the work is specified in detail. Phases 2 and 3
+      are indicative and should be re-estimated once Phase 1 is running, when real usage will
+      have changed the requirements.
+    </div>
+  </section>
+
+  <section>
+    <h2>Running cost, and its ceiling</h2>
+    <p class="lede">
+      Infrastructure is the part that could have grown unpredictably, so it was chosen to be
+      capped. These are the only three states it can be in.
+    </p>
+
+    <div class="ceiling">
+      <div class="rung r-now">
+        <span class="label">Now &mdash; pilot</span>
+        <div class="amt">&#8377;0<span style="font-size:1rem">/mo</span></div>
+        <p class="when">Free tier, with our own nightly encrypted backups and an automatic
+        keep-alive so the service never sleeps.</p>
+      </div>
+      <div class="rung r-next">
+        <span class="label">From Phase 1</span>
+        <div class="amt">&#8377;2,200<span style="font-size:1rem">/mo</span></div>
+        <p class="when">$25/month hosted plan, taken once real customer records exist. Buys
+        one-click restore and vendor support.</p>
+      </div>
+      <div class="rung r-max">
+        <span class="label">Worst case</span>
+        <div class="amt">&#8377;700<span style="font-size:1rem">/mo</span></div>
+        <p class="when">Self-managed server. Requires no change to the software, so this is a
+        genuine fallback rather than a theoretical one.</p>
+      </div>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Item</th><th>Provider</th><th class="num">Cost</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Database, logins, security</td><td>Managed platform</td><td class="num free">&#8377;0 &rarr; &#8377;2,200/mo</td></tr>
+          <tr><td>Website and portal hosting</td><td>Global CDN, free tier</td><td class="num free">&#8377;0</td></tr>
+          <tr><td>Passcode access control</td><td>Free up to 50 staff</td><td class="num free">&#8377;0</td></tr>
+          <tr><td>Backups</td><td>Automated, encrypted</td><td class="num free">&#8377;0</td></tr>
+          <tr><td>Domain name</td><td>Registrar</td><td class="num">&#8377;1,000/yr</td></tr>
+          <tr><td>Staff invitations</td><td>Sent over WhatsApp</td><td class="num free">&#8377;0</td></tr>
+          <tr><td>Android app listing <em>(Phase 3)</em></td><td>Google Play</td><td class="num">&#8377;2,100 once</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <b>One cost deliberately avoided.</b> Login passcodes are sent by email rather than SMS.
+      SMS would add a per-message charge and, in India, requires registering sender IDs and
+      templates with TRAI before the first message can be sent. The email route costs nothing
+      and needs no registration.
+    </div>
+  </section>
+
+  <section>
+    <h2>Assumptions and exclusions</h2>
+    <div class="cols">
+      <div>
+        <span class="label">Assumed</span>
+        <ul>
+          <li>One pilot city, Bhopal, before wider rollout</li>
+          <li>Under 50 staff using the portal during Phases 0&ndash;1</li>
+          <li>Customer records hold contact and service details only</li>
+          <li>Managers enter customer data; customers do not log in until Phase 3</li>
+          <li>Rupee figures at &#8377;88 to the US dollar</li>
+        </ul>
+      </div>
+      <div>
+        <span class="label">Not included</span>
+        <ul>
+          <li>Medical or clinical records &mdash; a separate compliance review</li>
+          <li>Billing, invoicing or payment collection</li>
+          <li>Payroll and attendance</li>
+          <li>Integration with hospital or insurer systems</li>
+          <li>Data migration from existing spreadsheets, if any</li>
+          <li>Ongoing support and maintenance after each phase</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>The main risk to these figures is scope, not technology.</b> Phases 2 and 3 are
+      estimated against a written plan, not against watching real managers work. The single
+      most useful thing the Bhopal pilot produces is a corrected estimate for everything
+      after it.
+    </div>
+  </section>
+
+  <footer>
+    <span>Pari Home Healthcare &mdash; phased delivery estimate, 14 August 2026.</span>
+    <span>Effort in person-days including contingency. Infrastructure prices verified against
+    published rates on the date of issue and subject to change by the providers.</span>
+  </footer>
+
+</div>
