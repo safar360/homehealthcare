@@ -19,6 +19,18 @@
 -- with a transaction-local flag a client has no way to set.
 -- ---------------------------------------------------------------------------
 
+-- Repeated from patch-column-guards.sql so this file stands on its own.
+create or replace function public.request_role()
+returns text
+language sql
+stable
+as $$
+  select coalesce(
+    nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'role',
+    ''
+  );
+$$;
+
 create or replace function public.guard_attendance_update()
 returns trigger
 language plpgsql
@@ -195,7 +207,9 @@ declare
   v_row public.attendance%rowtype;
   v_mgr uuid;
 begin
-  select a.*, ca.manager_id into v_row, v_mgr
+  -- A record variable cannot share an INTO list with a scalar, so the owning
+  -- manager is looked up on its own.
+  select ca.manager_id into v_mgr
   from public.attendance a
   join public.care_assignments ca on ca.id = a.assignment_id
   where a.id = p_id;
