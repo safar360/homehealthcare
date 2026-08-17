@@ -1,11 +1,10 @@
-# Delivery plan — operations portal release and patient data
+# Delivery plan — production release, access control and cost
 
 **Date:** 2026-08-14
 **Status:** proposal for review. No development against this yet.
 
-Answers four questions: how to host the operations portal on a proper domain, whether it
-is ready to release, whether the architecture can absorb patient data later, and what the
-phasing should be.
+Covers hosting, cost certainty at production scale, OTP-protected admin access, how a
+manager leaving is handled, and how patient data arrives in a later phase.
 
 ---
 
@@ -17,232 +16,307 @@ phasing should be.
 | Staff roles | Admin-managed table (was a hard-coded enum) |
 | Managers | Full CRUD, scoped to a city, with named areas |
 | Staff | Full CRUD, role, city, area, qualifications, availability, reporting manager |
-| Admin dashboard | Location-wise coverage table, uncovered-city and unassigned-staff warnings, breakdowns |
+| Admin dashboard | Location-wise coverage, uncovered-city and unassigned-staff warnings |
 | Manager portal | Own team only, enforced by RLS |
 | Staff portal | Own record and availability |
 | Patient app | Service catalogue plus anonymous order capture |
 | Security | RLS on every table, role helpers, column guards, RPC authorisation |
 | Hosting | One GitHub Pages site: patient at `/`, ops at `/ops/` |
 
-Verified against the live Supabase project by driving each portal in a browser.
+Deployed and verified in a browser against the live Supabase project.
 
 ---
 
-## 2. Hosting the operations portal on a proper hostname
+## 2. Cost at production scale
 
-### The constraint
+### The honest headline
 
-Today both apps are one GitHub Pages site, so the ops portal is a **path**
-(`…/ops/`), not a host. A GitHub Pages site takes exactly one custom domain, so this
-layout cannot produce `ops.yourdomain.com` — it can only produce
-`yourdomain.com/ops/`.
+**Usage will not cost you anything. Safety will cost about $25/month.**
 
-### Options
+Two limits on Supabase's free plan matter, and neither is about how much you use it:
 
-**A. Custom domain on the current setup — cheapest**
-Point a domain at the existing Pages site. Result: `care.example.com/` and
-`care.example.com/ops/`. One CNAME record plus a `CNAME` file in the repo. Free, ~30
-minutes, TLS automatic.
-*Weakness:* the ops portal shares an origin with the public site, so it cannot be
-firewalled separately, and its URL always looks like part of the public product.
+| Free plan behaviour | Consequence for production |
+|---|---|
+| **No backups at all** | One bad migration or accidental delete and the data is gone. There is nothing to restore from. |
+| **Projects pause after 1 week of inactivity** | A quiet week — a holiday, a slow patch — and the database stops. The patient app and portal both go down until someone manually resumes it. |
 
-**B. Separate subdomain — recommended**
-Move hosting to **Cloudflare Pages** with two projects from the same repo:
+Both are unacceptable once real staff and customer records exist. Supabase **Pro at
+$25/month** (≈ ₹2,200) fixes both: daily backups kept 7 days, and projects never pause.
+
+I would treat that $25 as **mandatory at production**, not optional. It is the entire
+realistic running cost.
+
+### Why capacity is not the concern
+
+Your projected scale sits far inside the free allowances, so you are not paying for room:
+
+| Resource | Free allowance | Your realistic Phase 2 usage |
+|---|---|---|
+| Database | 500 MB | 4 cities, ~20 managers, ~200 staff, ~2,000 patients ≈ a few MB |
+| Egress | 5 GB/month | App bundle ≈ 110 KB gzipped → roughly 45,000 page loads |
+| Monthly active users | 50,000 | Under 100 |
+| Edge function calls | 500,000 | A few hundred invites a month |
+| File storage | 1 GB | Only content images today |
+
+You would pay for **backups and uptime**, not for scale. That distinction matters: the
+cost will not grow as you add cities.
+
+### Full production cost sheet
+
+| Item | Plan | Cost |
+|---|---|---|
+| Supabase Pro (backups, no pausing) | Pro | **$25/month** |
+| Hosting — Cloudflare Pages | Free | ₹0 |
+| Access control — Cloudflare Zero Trust, ≤ 50 users | Free | ₹0 |
+| Edge Functions (invites) | Included | ₹0 |
+| Domain name | Registrar | ~₹1,000/year |
+| Transactional email | Not required — see §3 | ₹0 |
+| **Total** | | **≈ $25/month + ₹1,000/year** |
+
+### The one thing that would blow the budget
+
+**SMS OTP.** If "OTP" means a code by SMS, that is the one choice here with per-message
+cost and no free tier — plus, in India, transactional SMS requires DLT registration of
+sender IDs and templates with TRAI, which is a compliance exercise before the first
+message sends.
+
+§3 achieves OTP login **without SMS**, at zero cost. I would avoid SMS entirely unless a
+specific requirement forces it.
+
+### Cost guardrails to set on day one
+
+1. Turn on **spend caps** in Supabase so overage suspends rather than bills.
+2. Watch database size and egress monthly; both are visible on the project dashboard.
+3. Keep images in Storage or a CDN, never as database rows — the fastest way to eat 500 MB.
+4. Do not enable Point-in-Time Recovery ($100/month) — daily backups are sufficient here.
+
+---
+
+## 3. OTP login for admins, free of charge
+
+### Recommendation: Cloudflare Access one-time PIN, in front of the ops portal
+
+Cloudflare Zero Trust's free plan covers **up to 50 users** and includes **one-time PIN by
+email** as a built-in identity provider — no separate IdP, no code, no messaging cost. The
+PIN expires 10 minutes after it is requested.
+
+How it behaves:
+
+```
+staff member opens ops.yourdomain.com
+        │
+        ▼
+Cloudflare Access  ── email not on the allow-list ──▶ blocked, app never loads
+        │  enters email → receives 6-digit PIN → enters PIN
+        ▼
+Ops portal loads
+        │
+        ▼
+Supabase auth  ── role decides admin / manager / staff portal
+```
+
+Two independent gates. Even if a Supabase password leaks, the attacker never reaches the
+login page. And the portal stops being publicly reachable at all, which today it is.
+
+**Why this over building OTP into the app:**
+
+| Approach | Cost | Effort | Notes |
+|---|---|---|---|
+| **Cloudflare Access one-time PIN** | Free ≤50 users | ~2 hours, config only | Blocks before the app loads. Recommended. |
+| Supabase email OTP / magic link | Free, but needs SMTP | ~1 day | Supabase's built-in email sender is rate-limited and unsuitable for production, so it pulls in Resend or Brevo. |
+| Supabase TOTP MFA (authenticator app) | Free, no messaging | ~1–2 days | Good *second* factor for admins specifically. No email dependency at all. |
+| SMS OTP | Per message + DLT registration | ~3 days | Avoid. |
+
+### Suggested layering
+
+1. **Cloudflare Access OTP** on `ops.` — everyone, immediately, free.
+2. **Supabase TOTP MFA** for `role = 'admin'` only — a later hardening step, still free,
+   and it protects against a stolen laptop with a live Cloudflare session.
+
+Access also gives a free audit log of who authenticated and when, which is useful when a
+manager disputes an action.
+
+### One caveat
+
+Cloudflare Access sits in front of a **hostname**, so this requires the ops portal to be
+its own subdomain (§4). It cannot protect `/ops/` as a path on a shared domain — another
+reason to split the hosts.
+
+---
+
+## 4. Hosting on a proper hostname
+
+Today both apps are one GitHub Pages site, so the ops portal is a path, not a host. A
+Pages site takes one custom domain, so this layout can produce `care.example.com/ops/` but
+never `ops.example.com`.
+
+**Recommendation: Cloudflare Pages, two projects from the same repo.**
 
 | Project | Build | Domain |
 |---|---|---|
-| patient | `npm run build` at root | `www.example.com` |
-| ops | `npm run build` in `admin/` | `ops.example.com` |
+| patient | `npm run build` at root | `www.yourdomain.com` |
+| ops | `npm run build` in `admin/` | `ops.yourdomain.com` |
 
-Still free. Two advantages that matter for an internal tool:
-
-1. **Separate origin.** Session storage, cookies and any future CSP are isolated. A
-   mistake in the public site cannot reach ops-portal storage.
-2. **Cloudflare Access in front of `ops.`** — free for up to 50 users. Staff authenticate
-   to Cloudflare (Google/email OTP) *before* the app even loads, so the portal is not
-   publicly reachable at all. Supabase auth then runs behind it. That is real defence in
-   depth for a tool holding staff and, later, patient data.
-
-**C. Vercel** — same shape as B, better preview deployments, no equivalent of Cloudflare
-Access on the free tier.
-
-### Recommendation
-
-**Option B.** The extra work is roughly half a day: two Cloudflare Pages projects, DNS,
-and a `wrangler`-based workflow replacing the Pages one. The Access layer alone justifies
-it once the portal holds real staff records — and it is much cheaper to do before a
-custom domain is published than after.
+Free, and it unlocks three things: separate origins (session storage isolated), Cloudflare
+Access on `ops.` only, and independent cache and deploy control. Roughly half a day
+including DNS and replacing the Pages workflow.
 
 ---
 
-## 3. Is the operations portal ready to release?
+## 5. When a manager leaves
 
-**Functionally yes, operationally no.** It collects manager and staff data correctly, and
-that has been verified end to end. But four things must be fixed before real users touch
-it.
+Today this is handled badly, and one part is a genuine defect.
 
-### 3.1 Blocker — an admin cannot create a login
+### What happens now
 
-This is the significant one. Onboarding a manager today takes three steps, two of which
-need a developer:
+Deactivating a manager sets `is_active = false`. Their staff keep
+`assigned_manager_id` pointing at the deactivated record. The result:
 
-1. Admin adds the manager in the portal ✅
-2. Someone creates the auth user in the Supabase dashboard ❌
-3. Someone runs SQL to set `profiles.role` and link `location_managers.user_id` ❌
+- The manager immediately loses access to their team — `current_manager_id()` requires
+  `is_active`, so they see "No manager record". **This part is correct.**
+- **Their staff are silently orphaned.** They still display under the departed manager's
+  name, no active manager can see or edit them, and the dashboard does *not* flag it —
+  `unassigned_staff` only counts `assigned_manager_id IS NULL`, and these are not null.
+  They are invisible.
+- Their login still works. Nothing revokes the auth user.
 
-So the portal can record a manager but cannot give them access. **The portal is not
-self-sufficient**, and every onboarding needs engineering support.
+So a departure today leaves staff in a state where nobody can manage them and nothing
+warns anyone. That needs fixing before real managers exist.
 
-**Fix:** a Supabase Edge Function holding the `service_role` key that, given a name, email
-and role, creates the auth user, sends an invite email, sets the role and links the
-operational record — all in one action, callable only by an admin. Roughly two days
-including the "resend invite" and "deactivate access" paths.
+### Proposed: a guided offboarding flow
 
-The `service_role` key must live in the Edge Function only. It can never reach either
-browser app.
-
-### 3.2 Blocker — test accounts and data are live and public
-
-`test_admin@gmail.com` and `test_manager@gmail.com` both use `123456` and work from the
-open internet. Test records (Priya Nair, Sunil Rao, Ravi Kumar, two orders) are in the
-production database.
-
-**Fix:** delete both accounts and the test rows, raise the password minimum in
-Authentication → Providers → Email, and turn on leaked-password protection.
-
-### 3.3 Should fix — reassignment leaves no audit trail
-
-With the Transfers tab hidden, moving a staff member happens through Edit, which writes
-directly and skips `staff_transfer_history`. The RPCs and the table are still there, so
-this is a UI-only change whenever you want the trail back.
-
-### 3.4 Should fix — no operational safety net
-
-No error monitoring, and Supabase free-tier backups have not been tested with a restore.
-Both are small tasks worth doing before real data accumulates.
-
-### Verdict
-
-Ship it to a **pilot in one city** (Bhopal) once 3.1 and 3.2 are done — roughly **3–4 days**.
-A pilot exercises real onboarding without betting the whole operation on an untested
-workflow.
-
----
-
-## 4. Can the architecture absorb patient data?
-
-**Yes, as an extension rather than a rewrite.** Three reasons:
-
-1. **The city → manager → staff hierarchy is already the spine.** Patients hang off the
-   same spine: a patient belongs to a city and an area, and is owned by a manager. No new
-   organising concept is needed.
-2. **Authorisation generalises.** `is_admin()`, `is_manager()` and `current_manager_id()`
-   already express "admins see everything, managers see their own patch". Patient policies
-   reuse them directly.
-3. **Order capture already collects patient-shaped data.** `orders` holds name, phone,
-   address and city. A patient record is that data, promoted from a one-off lead into a
-   durable entity — so there is a natural migration path from existing orders.
-
-### Proposed model
+One action on the Managers tab — **Offboard** — that runs as a single transaction:
 
 ```
-cities ──< location_managers ──< location_staff
-   │              │
-   └──────────────┴──< patients ──< patient_service_history
-                            │
-                          orders (patient_id, nullable)
+Offboard: Priya Nair (Bhopal, 8 staff)
+
+  Reassign 8 staff to  ▼ [ Sunil Rao — Bhopal, 3 staff ]
+                          [ Leave unassigned (admin will place them) ]
+
+  Reason  [ Resigned, last day 30 Aug ]
+
+  ☑ Revoke portal access immediately
+
+  [ Offboard ]
 ```
 
-`patients`, entered by a manager:
+Behind it, an RPC that:
 
-| Field | Purpose |
+1. Moves every staff member to the replacement, writing one
+   `staff_transfer_history` row each — so the handover is auditable.
+2. Sets the manager `is_active = false`, preserving the record and its history.
+3. Revokes the login (Edge Function disables the auth user, §6). The person keeps
+   existing as a record; they simply cannot sign in.
+4. Records who offboarded whom, and when.
+
+### Handling the messy cases
+
+| Situation | Behaviour |
 |---|---|
-| `full_name`, `phone_number`, `alt_phone` | contact |
-| `address`, `city_slug`, `area` | location, matching the staff area model |
-| `assigned_manager_id` | ownership, drives RLS |
-| `status` | `prospect` / `active` / `paused` / `closed` — this is the "active customer" flag |
-| `service_type` | which service they are on |
-| `started_on`, `last_service_on` | tenure and recency |
-| `notes` | free text |
-| `created_by`, timestamps | provenance |
+| **No replacement yet** | Choose "leave unassigned". Staff go to `assigned_manager_id = NULL`, which the dashboard already warns about, and the city appears under "no manager covering". Visible, not silent. |
+| **Sudden departure, no handover** | Same flow, run by an admin. Nothing depends on the departing manager cooperating. |
+| **Temporarily away (leave, illness)** | Do *not* offboard. Add a `covering_manager_id` to `location_managers`, so a colleague sees the team temporarily while the original keeps the record and returns. Small change; worth doing with the offboarding work. |
+| **Splitting a team between two managers** | Offboard reassigns in bulk to one manager; the admin then moves individuals on the Staff tab. Bulk-select is a later refinement. |
+| **Manager returns later** | Reactivate the record and reassign staff. History is intact because nothing was deleted. |
 
-**Active customers** then fall out of a single query: `status = 'active'`, optionally
-filtered by recency. The admin dashboard gains patients-per-city and active-vs-total
-alongside the existing coverage table.
+### Two defects to fix alongside
 
-### One deliberate constraint
-
-Keep **contact and service data only — no clinical data.** No diagnoses, medications, or
-vitals. The moment health records are stored, the compliance surface changes materially
-(India's DPDP Act, and hospital contracts often demand more). Phase 1 avoided this on
-purpose and Phase 2 should hold the line. When clinical data genuinely becomes necessary
-it deserves its own design review, not an incremental column.
-
-### Risks to watch
-
-- **Patient logins are a later, separate decision.** Managers entering patient records is
-  much simpler than patients authenticating. Do not conflate them.
-- **Duplicate patients** across managers will need a phone-number match on entry.
-- **Deletion and consent.** DPDP gives a right to erasure; soft-delete plus a real purge
-  path should be designed in from the start rather than retrofitted.
+1. **Dashboard must count staff whose manager is inactive** as needing attention, not just
+   those with a null manager. This is the silent-orphan bug above.
+2. **Re-enable the audit trail.** With Transfers hidden, reassignment through Edit writes
+   no history. Offboarding depends on that trail, so the Transfers tab should come back
+   as a read-only history view when this work lands.
 
 ---
 
-## 5. Phasing
+## 6. The release blocker: an admin cannot create a login
 
-### Phase 1 — staff and location management *(essentially complete)*
-Cities, roles, managers, staff, location-wise dashboard, three role-themed portals.
-Remaining: verify the current build against the live database, then merge.
+Creating an auth user needs the `service_role` key, which can never ship in a browser. So
+today onboarding takes three steps, two needing a developer: add the manager in the portal,
+create the auth user in the Supabase dashboard, then run SQL to set the role and link
+`user_id`.
 
-### Phase 1.5 — release readiness *(3–4 days)*
-1. Admin-driven user invitation via Edge Function — **the blocker**
-2. Remove test accounts and data; harden the password policy
-3. Cloudflare Pages with `ops.` subdomain and Cloudflare Access
-4. Error monitoring and one tested backup restore
+**Fix:** a Supabase Edge Function holding the key, callable only by an admin, that creates
+the user, sets the role, links the operational record and returns a one-time set-password
+link. The admin sends that link over **WhatsApp** — which is how this business already
+communicates — so no transactional email provider is needed at all.
 
-**Exit:** a manager in Bhopal is onboarded by an admin, with no developer involved.
+The same function provides **revoke**, which offboarding (§5) depends on.
+
+---
+
+## 7. Patient data in a later phase
+
+The architecture absorbs it as an extension, not a rewrite, for three reasons: the
+city → manager → staff hierarchy is already the spine and patients hang off it unchanged;
+`is_admin()` / `is_manager()` / `current_manager_id()` already express the ownership rules
+patient policies need; and `orders` already collects patient-shaped data (name, phone,
+address, city), so existing leads can be promoted into patient records.
+
+`patients`, entered by a manager: contact details, address, `city_slug`, `area`,
+`assigned_manager_id`, `status` (`prospect` / `active` / `paused` / `closed`),
+`service_type`, `started_on`, `last_service_on`, notes, provenance.
+
+**Active customers** then fall out of `status = 'active'`, per city, on the same dashboard.
+
+**One constraint to hold: contact and service data only — no clinical data.** No diagnoses,
+medications or vitals. Storing health records changes the compliance surface materially
+under India's DPDP Act. Phase 1 avoided this deliberately and Phase 2 should too; when
+clinical data becomes genuinely necessary it deserves its own design review.
+
+Patients will also need a duplicate check on phone number, and a real erasure path — DPDP
+gives a right to deletion, and that is far cheaper designed in than retrofitted.
+
+---
+
+## 8. Phasing
+
+### Phase 1 — staff and location management ✅ complete and deployed
+
+### Phase 1.5 — production readiness *(~1 week)*
+The gate for a real pilot.
+
+| # | Item | Effort |
+|---|---|---|
+| 1 | Invite and revoke via Edge Function — **the blocker** | 1.5 d |
+| 2 | Cloudflare Pages, `ops.` subdomain, DNS | 0.5 d |
+| 3 | Cloudflare Access one-time PIN on `ops.` | 2 h |
+| 4 | Manager offboarding flow, plus the two defects in §5 | 1.5 d |
+| 5 | Supabase Pro, spend caps, one tested restore | 0.5 d |
+| 6 | Delete test accounts and data; raise password policy | 1 h |
+
+**Exit:** an admin onboards a Bhopal manager unaided, that manager logs in through OTP, and
+offboarding them reassigns their team cleanly.
 
 ### Phase 2 — patients and active customers *(1–1.5 weeks)*
-1. `patients` table with RLS mirroring the staff model
-2. Manager portal: add, edit, list, search patients in their own area
-3. Status lifecycle: prospect → active → paused → closed
-4. Admin dashboard: patients and active customers per city
-5. Link existing `orders` to patient records where the phone number matches
-
-**Exit:** an admin can see active customers per city, sourced from managers.
+`patients` table with RLS mirroring the staff model; manager screens to add and maintain
+them; status lifecycle; active-customer reporting per city; link existing orders by phone.
 
 ### Phase 3 — visits and scheduling *(2–3 weeks)*
-The `visits` table connecting patient, staff and time. This is what turns an order into
-scheduled work, and it is the prerequisite for a staff day view, check-in/out, and any
-patient-facing schedule. Deliberately deferred, but it is the centre of the product and
-everything operational eventually routes through it.
+The `visits` table connecting patient, staff and time. Prerequisite for a staff day view,
+check-in/out, and anything patient-facing. Deferred, but it is the centre of the product.
 
 ### Phase 4 — patient self-service *(later)*
-Patient login, care plan and visit visibility. Only worth building on top of Phase 3.
+Only worth building on Phase 3.
 
 ---
 
-## 6. Decisions needed before Phase 1.5 starts
+## 9. Decisions needed
 
-1. **Domain name** — what should the ops portal live at? (`ops.<something>`)
-2. **Hosting move** — confirm Cloudflare Pages, or stay on GitHub Pages with a path.
-3. **Cloudflare Access** — put the ops portal behind an org login, or rely on Supabase
-   auth alone?
-4. **Invite email sender** — Supabase's built-in sender is rate-limited and unsuitable for
-   production; Resend or Brevo free tier is the usual answer. Needs a domain to send from.
+1. **Domain name** for the portals (`ops.` + `www.`).
+2. **Supabase Pro** — confirm $25/month is acceptable at go-live. Without it there are no
+   backups and the project pauses after a quiet week.
+3. **Cloudflare Access** — confirm OTP-before-app for the ops portal.
+4. **TOTP MFA for admins** — now, or a later hardening pass?
 5. **Pilot city** — Bhopal assumed.
+6. **Old cities** — deactivate Mumbai, Pune, Bengaluru and Delhi, and remove the test
+   records sitting in them?
 
 ---
 
-## 7. Estimate
+## Sources
 
-| Phase | Effort | Delivers |
-|---|---|---|
-| 1 | ~complete | Staff and location management |
-| 1.5 | 3–4 days | A releasable ops portal on its own domain |
-| 2 | 1–1.5 weeks | Patient records and active-customer reporting |
-| 3 | 2–3 weeks | Visits and scheduling |
-
-Infrastructure stays at **₹0/month** through Phase 2 on Supabase and Cloudflare free
-tiers. The first likely cost is a transactional email plan once invite volume grows, plus
-the domain itself.
+- [Supabase pricing](https://supabase.com/pricing) — free tier limits, pausing after one
+  week of inactivity, absence of backups, Pro at $25/month
+- [Cloudflare One — one-time PIN login](https://developers.cloudflare.com/cloudflare-one/identity/idp-integration/one-time-pin) — built-in email PIN identity provider
+- [Cloudflare Zero Trust free plan limits (2026)](https://zerometric.net/research/cloudflare-zero-trust-free-plan-limits-2026/) — 50 users on the free plan
