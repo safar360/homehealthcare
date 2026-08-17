@@ -1,0 +1,43 @@
+name: Keep Supabase awake
+
+# Supabase pauses a free project after 7 days without activity. A team using
+# the portal daily never triggers it, but a holiday or a quiet patch would --
+# and a paused project takes the patient app down with it. One request a day
+# removes that failure mode entirely.
+on:
+  schedule:
+    - cron: '0 6 * * *' # 11:30 IST daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Deliberately separate from the backup workflow: a broken backup (expired
+# database password, say) must not stop the thing keeping the project alive.
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping PostgREST
+        env:
+          URL: ${{ secrets.VITE_SUPABASE_URL }}
+          KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::error::VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY are not set."
+            exit 1
+          fi
+
+          code=$(curl -s -o /tmp/out -w '%{http_code}' --max-time 30 \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+            "$URL/rest/v1/cities?select=slug&limit=1")
+
+          echo "HTTP $code"
+          # A paused project answers with 5xx or fails to resolve, so anything
+          # other than 200 is worth a red run rather than a silent pass.
+          if [ "$code" != "200" ]; then
+            echo "::error::Supabase did not answer with 200 (got $code). The project may be paused or the key rotated."
+            head -c 300 /tmp/out
+            exit 1
+          fi
+          echo "Project is awake." >> "$GITHUB_STEP_SUMMARY"

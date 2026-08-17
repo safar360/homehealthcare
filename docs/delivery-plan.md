@@ -29,22 +29,34 @@ Deployed and verified in a browser against the live Supabase project.
 
 ## 2. Cost at production scale
 
-### The honest headline
+### The headline
 
-**Usage will not cost you anything. Safety will cost about $25/month.**
+**You can launch and run on the free tier at ₹0/month.** The two things the free plan
+lacks are both mitigated in this repository, for free:
 
-Two limits on Supabase's free plan matter, and neither is about how much you use it:
+| Free plan gap | Mitigation | Status |
+|---|---|---|
+| No backups at all | Nightly encrypted `pg_dump`, 90-day retention | ✅ `.github/workflows/backup.yml` |
+| Pauses after 7 days idle | One authenticated request a day | ✅ `.github/workflows/keepalive.yml` |
 
-| Free plan behaviour | Consequence for production |
+Setup and restore procedure: [operations.md](operations.md).
+
+Supabase Pro at $25/month remains worth buying eventually, but it is **not** required to
+go live. What it buys is a one-click restore, email support, and not managing an
+encryption passphrase yourself. It does *not* buy a smaller data-loss window — Pro's
+backups are also daily.
+
+**Upgrade when any one of these is true:** real patient records exist (Phase 2); more than
+about two cities are live; or an incident has happened where restore speed mattered.
+
+### Residual risk on free tier
+
+| | Exposure |
 |---|---|
-| **No backups at all** | One bad migration or accidental delete and the data is gone. There is nothing to restore from. |
-| **Projects pause after 1 week of inactivity** | A quiet week — a holiday, a slow patch — and the database stops. The patient app and portal both go down until someone manually resumes it. |
-
-Both are unacceptable once real staff and customer records exist. Supabase **Pro at
-$25/month** (≈ ₹2,200) fixes both: daily backups kept 7 days, and projects never pause.
-
-I would treat that $25 as **mandatory at production**, not optional. It is the entire
-realistic running cost.
+| Data loss window | Up to 24 hours |
+| Restore | ~15 minutes, manual, needs the passphrase |
+| Logins after restore | `auth.users` is not in the dump — accounts must be recreated |
+| Support | Community only |
 
 ### Why capacity is not the concern
 
@@ -65,13 +77,13 @@ cost will not grow as you add cities.
 
 | Item | Plan | Cost |
 |---|---|---|
-| Supabase Pro (backups, no pausing) | Pro | **$25/month** |
+| Supabase | Free (Pro $25/mo optional later) | **₹0** |
 | Hosting — Cloudflare Pages | Free | ₹0 |
 | Access control — Cloudflare Zero Trust, ≤ 50 users | Free | ₹0 |
 | Edge Functions (invites) | Included | ₹0 |
 | Domain name | Registrar | ~₹1,000/year |
 | Transactional email | Not required — see §3 | ₹0 |
-| **Total** | | **≈ $25/month + ₹1,000/year** |
+| **Total to launch** | | **₹0/month + ~₹1,000/year for the domain** |
 
 ### The one thing that would blow the budget
 
@@ -282,7 +294,7 @@ The gate for a real pilot.
 | 2 | Cloudflare Pages, `ops.` subdomain, DNS | 0.5 d |
 | 3 | Cloudflare Access one-time PIN on `ops.` | 2 h |
 | 4 | Manager offboarding flow, plus the two defects in §5 | 1.5 d |
-| 5 | Supabase Pro, spend caps, one tested restore | 0.5 d |
+| 5 | Backup + keep-alive secrets set, one tested restore | 2 h |
 | 6 | Delete test accounts and data; raise password policy | 1 h |
 
 **Exit:** an admin onboards a Bhopal manager unaided, that manager logs in through OTP, and
@@ -304,8 +316,8 @@ Only worth building on Phase 3.
 ## 9. Decisions needed
 
 1. **Domain name** for the portals (`ops.` + `www.`).
-2. **Supabase Pro** — confirm $25/month is acceptable at go-live. Without it there are no
-   backups and the project pauses after a quiet week.
+2. **Supabase Pro** — not needed at launch; the backup and keep-alive workflows cover it.
+   Revisit when real patient records exist.
 3. **Cloudflare Access** — confirm OTP-before-app for the ops portal.
 4. **TOTP MFA for admins** — now, or a later hardening pass?
 5. **Pilot city** — Bhopal assumed.

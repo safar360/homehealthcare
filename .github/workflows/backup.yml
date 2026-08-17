@@ -1,0 +1,115 @@
+name: Nightly database backup
+
+# Supabase's free plan takes no backups at all, so this takes our own: a full
+# pg_dump every night, encrypted before it leaves the runner, kept as a build
+# artifact for 90 days.
+#
+# See docs/operations.md for the two secrets this needs and for the restore
+# procedure. A backup nobody has restored is not a backup -- practise it.
+on:
+  schedule:
+    - cron: '30 20 * * *' # 02:00 IST (UTC+5:30) daily
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check secrets
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$DB_URL" ] || [ -z "$PASSPHRASE" ]; then
+            echo "::error::Set SUPABASE_DB_URL and BACKUP_PASSPHRASE. See docs/operations.md."
+            exit 1
+          fi
+          # The direct connection (db.<ref>.supabase.co) is IPv6-only, and GitHub
+          # runners have no IPv6 -- it fails with "network unreachable". The
+          # session pooler is IPv4 and supports pg_dump; the transaction pooler
+          # on 6543 does not.
+          case "$DB_URL" in
+            *pooler.supabase.com:5432*) : ;;
+            *:6543*)
+              echo "::error::That is the transaction pooler (port 6543), which cannot run pg_dump. Use the Session pooler string on port 5432."
+              exit 1 ;;
+            *db.*.supabase.co*)
+              echo "::error::That is the direct connection, which is IPv6-only and unreachable from GitHub runners. Use the Session pooler string."
+              exit 1 ;;
+            *) echo "::warning::Unrecognised connection string; continuing." ;;
+          esac
+
+      # Ubuntu ships an older client, and pg_dump refuses to dump a newer
+      # server. Install the client matching Supabase's Postgres major version.
+      - name: Install postgresql-client 17
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+          pg_dump --version
+
+      - name: Dump
+        env:
+          DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          # Custom format (-Fc) so pg_restore can be selective on the way back.
+          # Ownership and grants are Supabase-managed, so they are left out.
+          pg_dump "$DB_URL" \
+            --no-owner --no-privileges --format=custom \
+            --file=dump.pgc
+
+          size=$(stat -c%s dump.pgc)
+          echo "dump: $size bytes"
+          # An empty or near-empty dump usually means the connection succeeded
+          # against the wrong database. Failing here stops a good backup being
+          # rotated out by a useless one.
+          if [ "$size" -lt 10000 ]; then
+            echo "::error::Dump is only $size bytes, which is too small to be real. Not uploading."
+            exit 1
+          fi
+
+      - name: Encrypt
+        env:
+          PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          # The dump holds staff -- and later patient -- personal data, and this
+          # repository is public, so artifacts are downloadable by anyone. It
+          # never leaves the runner unencrypted.
+          gpg --batch --yes --symmetric \
+            --cipher-algo AES256 \
+            --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 65011712 \
+            --passphrase "$PASSPHRASE" \
+            --output "backup-$(date -u +%Y-%m-%d).pgc.gpg" \
+            dump.pgc
+          shred -u dump.pgc
+          ls -la ./*.gpg
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_number }}
+          path: '*.pgc.gpg'
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "### Backup complete"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| File | \`$(ls ./*.gpg)\` |"
+            echo "| Size | $(du -h ./*.gpg | cut -f1) |"
+            echo "| Encryption | GPG symmetric, AES-256 |"
+            echo "| Retention | 90 days |"
+            echo ""
+            echo "Restore: see \`docs/operations.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
