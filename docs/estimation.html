@@ -213,6 +213,7 @@
   .p1 { --phase: var(--indigo); }
   .p2 { --phase: var(--amber); }
   .p3 { --phase: var(--slate); }
+  .p4 { --phase: var(--rule); }
 
   .phase-head {
     display: flex;
@@ -400,8 +401,8 @@
     </div>
     <div class="figure">
       <dt>Full roadmap</dt>
-      <dd>53 days</dd>
-      <small>Phases 0&ndash;3 combined, including contingency</small>
+      <dd>66 days</dd>
+      <small>Phases 0&ndash;4 combined, including contingency</small>
     </div>
     <div class="figure">
       <dt>Running cost at pilot</dt>
@@ -483,13 +484,13 @@
       <article class="phase p1">
         <div class="phase-head">
           <span class="phase-no">PHASE 1</span>
-          <h3 class="phase-name">Customers and active accounts</h3>
+          <h3 class="phase-name">Customers, assignments and rates</h3>
           <span class="chip chip-next">Next</span>
         </div>
 
         <dl class="phase-stats">
-          <div><dt>Effort</dt><dd>10 days</dd></div>
-          <div><dt>Elapsed</dt><dd>~2.5 weeks</dd></div>
+          <div><dt>Effort</dt><dd>12 days</dd></div>
+          <div><dt>Elapsed</dt><dd>~3 weeks</dd></div>
           <div><dt>Running cost</dt><dd>&#8377;2,200/mo</dd></div>
           <div><dt>Starts</dt><dd>After pilot</dd></div>
         </dl>
@@ -500,8 +501,9 @@
             <ul>
               <li>Managers record customers in their own area</li>
               <li>Lifecycle: enquiry &rarr; active &rarr; paused &rarr; closed</li>
-              <li>Duplicate detection on phone number</li>
-              <li>Existing enquiries matched into customer records</li>
+              <li>Assign a staff member to a customer, with start and end dates</li>
+              <li>Rates per service type &mdash; 12-hour and 24-hour priced separately,
+                  for both what the family pays and what the staff member earns</li>
               <li>Admin reporting: active customers per city</li>
             </ul>
           </div>
@@ -517,8 +519,8 @@
         </div>
 
         <p class="exit">
-          <b>Ready when:</b> an administrator can see active customer numbers per city,
-          sourced from what managers enter day to day.
+          <b>Ready when:</b> a manager can record a customer, assign a staff member and set
+          the agreed rates &mdash; and an administrator can see active customers per city.
         </p>
       </article>
 
@@ -526,13 +528,13 @@
       <article class="phase p2">
         <div class="phase-head">
           <span class="phase-no">PHASE 2</span>
-          <h3 class="phase-name">Visits and scheduling</h3>
+          <h3 class="phase-name">Scheduling and attendance</h3>
           <span class="chip chip-later">Planned</span>
         </div>
 
         <dl class="phase-stats">
-          <div><dt>Effort</dt><dd>20 days</dd></div>
-          <div><dt>Elapsed</dt><dd>~5 weeks</dd></div>
+          <div><dt>Effort</dt><dd>15 days</dd></div>
+          <div><dt>Elapsed</dt><dd>~4 weeks</dd></div>
           <div><dt>Running cost</dt><dd>&#8377;2,200/mo</dd></div>
           <div><dt>Confidence</dt><dd>Indicative</dd></div>
         </dl>
@@ -541,27 +543,28 @@
           <div>
             <span class="label">Scope</span>
             <ul>
-              <li>Scheduled visits linking a customer, a staff member and a time</li>
-              <li>Managers assign and reschedule work</li>
-              <li>Staff see their day and mark visits complete</li>
-              <li>Location-verified check-in and check-out</li>
-              <li>Admin oversight of completion and no-shows</li>
+              <li>Managers schedule visits and assign them to staff</li>
+              <li>Staff check in and check out on their phone</li>
+              <li>Each day records its service type &mdash; 12-hour or 24-hour</li>
+              <li>Days served totalled per customer and per staff member, monthly</li>
+              <li>Managers correct missed or backdated entries</li>
             </ul>
           </div>
           <div>
             <span class="label">Why it matters</span>
             <ul>
-              <li>This is what turns an enquiry into scheduled, billable work</li>
-              <li>Everything customer-facing depends on it &mdash; a family cannot be
-                  shown a schedule that does not exist</li>
-              <li>Largest single stage; worth splitting into two releases</li>
+              <li>Days served is the number every bill and every wage is built from</li>
+              <li>Counting days rather than weeks means a customer starting mid-week
+                  needs no special handling</li>
+              <li>Attendance is the most disputed data in the business, so it is
+                  corrected and audited, never deleted</li>
             </ul>
           </div>
         </div>
 
         <p class="exit">
-          <b>Ready when:</b> a manager schedules a visit, the assigned staff member sees it,
-          checks in on site, and the admin sees it completed.
+          <b>Ready when:</b> a manager schedules a visit, the staff member checks in and out
+          on site, and both the customer's and the staff member's day counts are correct.
         </p>
       </article>
 
@@ -569,6 +572,52 @@
       <article class="phase p3">
         <div class="phase-head">
           <span class="phase-no">PHASE 3</span>
+          <h3 class="phase-name">Billing, payments and staff pay</h3>
+          <span class="chip chip-later">Planned</span>
+        </div>
+
+        <dl class="phase-stats">
+          <div><dt>Effort</dt><dd>16 days</dd></div>
+          <div><dt>Elapsed</dt><dd>~4 weeks</dd></div>
+          <div><dt>Running cost</dt><dd>&#8377;2,200/mo</dd></div>
+          <div><dt>Confidence</dt><dd>Indicative</dd></div>
+        </dl>
+
+        <div class="cols">
+          <div>
+            <span class="label">Scope</span>
+            <ul>
+              <li>Monthly bill per customer, built from days actually served</li>
+              <li>Advance recorded at the start of each month, balance tracked</li>
+              <li>Payments recorded against the bill as they come in</li>
+              <li>Monthly pay per staff member, from the same attendance</li>
+              <li>Managers and admins record what has been paid out</li>
+              <li>Margin per customer, visible to managers and admins</li>
+            </ul>
+          </div>
+          <div>
+            <span class="label">Why it is its own phase</span>
+            <ul>
+              <li>Money needs correctness, audit and dispute handling that a
+                  schedule alone does not</li>
+              <li>A bill once issued is a record, never recalculated</li>
+              <li>Rates are frozen onto each day served, so a rate change today
+                  cannot alter last month&rsquo;s invoice</li>
+            </ul>
+          </div>
+        </div>
+
+        <p class="exit">
+          <b>Ready when:</b> a month closes and the system shows, per customer, what was
+          earned, what was advanced and what is outstanding &mdash; and per staff member,
+          what is payable and what has been paid.
+        </p>
+      </article>
+
+      <!-- ---------------------------------------------------- Phase 4 -->
+      <article class="phase p4">
+        <div class="phase-head">
+          <span class="phase-no">PHASE 4</span>
           <h3 class="phase-name">Customer app and notifications</h3>
           <span class="chip chip-later">Planned</span>
         </div>
@@ -637,21 +686,28 @@
             <td class="num">56,000</td>
           </tr>
           <tr>
-            <td><b>1</b> &nbsp;Customers and active accounts</td>
-            <td class="num">10</td>
-            <td class="num">40,000</td>
+            <td><b>1</b> &nbsp;Customers, assignments and rates</td>
+            <td class="num">12</td>
+            <td class="num">48,000</td>
+            <td class="num">72,000</td>
+            <td class="num">96,000</td>
+          </tr>
+          <tr>
+            <td><b>2</b> &nbsp;Scheduling and attendance</td>
+            <td class="num">15</td>
             <td class="num">60,000</td>
-            <td class="num">80,000</td>
-          </tr>
-          <tr>
-            <td><b>2</b> &nbsp;Visits and scheduling</td>
-            <td class="num">20</td>
-            <td class="num">80,000</td>
+            <td class="num">90,000</td>
             <td class="num">1,20,000</td>
-            <td class="num">1,60,000</td>
           </tr>
           <tr>
-            <td><b>3</b> &nbsp;Customer app and notifications</td>
+            <td><b>3</b> &nbsp;Billing, payments and staff pay</td>
+            <td class="num">16</td>
+            <td class="num">64,000</td>
+            <td class="num">96,000</td>
+            <td class="num">1,28,000</td>
+          </tr>
+          <tr>
+            <td><b>4</b> &nbsp;Customer app and notifications</td>
             <td class="num">16</td>
             <td class="num">64,000</td>
             <td class="num">96,000</td>
@@ -661,10 +717,10 @@
         <tfoot>
           <tr>
             <td>Total remaining</td>
-            <td class="num">53</td>
-            <td class="num">2,12,000</td>
-            <td class="num">3,18,000</td>
-            <td class="num">4,24,000</td>
+            <td class="num">66</td>
+            <td class="num">2,64,000</td>
+            <td class="num">3,96,000</td>
+            <td class="num">5,28,000</td>
           </tr>
         </tfoot>
       </table>
@@ -748,7 +804,9 @@
         <span class="label">Not included</span>
         <ul>
           <li>Medical or clinical records &mdash; a separate compliance review</li>
-          <li>Billing, invoicing or payment collection</li>
+          <li>GST-compliant tax invoices &mdash; see open question below</li>
+          <li>Online payment collection; payments are recorded, not processed</li>
+          <li>Printed or PDF bills; figures are shown in the portal</li>
           <li>Payroll and attendance</li>
           <li>Integration with hospital or insurer systems</li>
           <li>Data migration from existing spreadsheets, if any</li>
