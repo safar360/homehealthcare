@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from './lib/supabase';
+import AttendancePanel from './AttendancePanel';
+import MonthlyPanel from './MonthlyPanel';
+import PatientsPanel from './PatientsPanel';
 import {
   AVAILABILITY_STATUSES,
   humanise,
@@ -10,7 +13,7 @@ import {
   type StaffRoleRow,
 } from './lib/types';
 
-type Tab = 'overview' | 'staff';
+type Tab = 'overview' | 'staff' | 'patients' | 'day' | 'month';
 
 type StaffForm = {
   full_name: string;
@@ -216,14 +219,18 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
       </section>
 
       <nav className="tabs">
-        {(['overview', 'staff'] as Tab[]).map((key) => (
+        {(['overview', 'staff', 'patients', 'day', 'month'] as Tab[]).map((key) => (
           <button
             key={key}
             type="button"
             className={`tab ${tab === key ? 'active' : ''}`}
             onClick={() => setTab(key)}
           >
-            {key === 'overview' ? 'Overview' : `My team (${staff.length})`}
+            {key === 'overview' && 'Overview'}
+            {key === 'staff' && `My team (${staff.length})`}
+            {key === 'patients' && 'Patients & rates'}
+            {key === 'day' && 'Day sheet'}
+            {key === 'month' && 'Monthly bills'}
           </button>
         ))}
       </nav>
@@ -276,6 +283,30 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
             </div>
           </div>
         </div>
+      )}
+
+      {tab === 'patients' && (
+        <PatientsPanel
+          scope={{ kind: 'manager', managerId: manager.id, citySlug: manager.city_slug }}
+          onError={setError}
+          onNotice={setNotice}
+        />
+      )}
+
+      {tab === 'day' && (
+        <AttendancePanel
+          scope={{ kind: 'manager', managerId: manager.id, citySlug: manager.city_slug }}
+          onError={setError}
+          onNotice={setNotice}
+        />
+      )}
+
+      {tab === 'month' && (
+        <MonthlyPanel
+          scope={{ kind: 'manager', managerId: manager.id, citySlug: manager.city_slug }}
+          onError={setError}
+          onNotice={setNotice}
+        />
       )}
 
       {tab === 'staff' && (

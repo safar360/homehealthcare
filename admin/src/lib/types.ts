@@ -100,6 +100,135 @@ export type DashboardSummary = {
   orders_by_status: Record<string, number>;
 };
 
+// ---------------------------------------------------------------------------
+// Phase 2 — patients, care assignments, attendance and money
+// ---------------------------------------------------------------------------
+
+export type ServiceType = {
+  slug: string;
+  label: string;
+  hours: number | null;
+  is_active: boolean;
+  sort_order: number;
+};
+
+export type PatientStatus = 'prospect' | 'active' | 'paused' | 'closed';
+
+export type Patient = {
+  id: string;
+  full_name: string;
+  phone_number: string | null;
+  alt_phone: string | null;
+  address: string | null;
+  city_slug: string | null;
+  area: string | null;
+  assigned_manager_id: string | null;
+  status: PatientStatus;
+  started_on: string | null;
+  notes: string | null;
+  is_active: boolean;
+  created_at: string;
+};
+
+/** monthly rates are per 30-day month; per_day rates are per day served. */
+export type BillingMode = 'monthly' | 'per_day';
+
+export type AssignmentStatus = 'active' | 'paused' | 'ended';
+
+export type CareAssignment = {
+  id: string;
+  patient_id: string;
+  staff_id: string | null;
+  manager_id: string | null;
+  billing_mode: BillingMode;
+  start_date: string;
+  end_date: string | null;
+  status: AssignmentStatus;
+  notes: string | null;
+  created_at: string;
+};
+
+export type AssignmentRate = {
+  id: string;
+  assignment_id: string;
+  service_type: string;
+  patient_rate: number;
+  staff_rate: number;
+};
+
+/** One assignment as the staff check-in screen sees it — rates deliberately absent. */
+export type StaffDay = {
+  assignment_id: string;
+  patient_name: string;
+  phone_number: string | null;
+  address: string | null;
+  area: string | null;
+  service_types: { slug: string; label: string }[];
+  today: {
+    id: string;
+    service_type: string;
+    check_in_at: string | null;
+    check_out_at: string | null;
+    status: string;
+  } | null;
+};
+
+/** A priced line on a bill or a payout: days of one type at one frozen rate. */
+export type MoneyLine = {
+  service_type: string;
+  label: string;
+  days: number;
+  rate: number;
+  billing_mode: BillingMode;
+  amount: number;
+};
+
+/** Shape returned by build_staff_payout(). */
+export type StaffPayout = {
+  payout_id: string | null;
+  staff_id: string;
+  month: string;
+  lines: MoneyLine[];
+  days_served: number;
+  total_payable: number;
+  paid_amount: number;
+  balance: number;
+  status: 'pending' | 'part_paid' | 'paid';
+};
+
+export const PATIENT_STATUSES: PatientStatus[] = ['prospect', 'active', 'paused', 'closed'];
+export const ASSIGNMENT_STATUSES: AssignmentStatus[] = ['active', 'paused', 'ended'];
+
+/** ₹14,200.00 — Indian digit grouping, always two decimals. */
+export function inr(value: number | string | null | undefined): string {
+  const n = Number(value ?? 0);
+  if (!isFinite(n)) return '—';
+  return `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/** Today as YYYY-MM-DD in local time — `toISOString()` would shift IST back a day. */
+export function today(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** The 1st of the month a date falls in — every bill and payout keys on this. */
+export function monthStart(date: string = today()): string {
+  return `${date.slice(0, 7)}-01`;
+}
+
+/** "2026-08-01" -> "August 2026" */
+export function monthLabel(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+}
+
+/** "09:12" from a timestamptz, or an em dash when it never happened. */
+export function clockTime(ts: string | null | undefined): string {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+}
+
 export const AVAILABILITY_STATUSES: AvailabilityStatus[] = [
   'available',
   'on_leave',

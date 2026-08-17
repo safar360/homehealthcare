@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from './lib/supabase';
+import AttendancePanel from './AttendancePanel';
+import MonthlyPanel from './MonthlyPanel';
+import PatientsPanel from './PatientsPanel';
 import {
   AVAILABILITY_STATUSES,
   humanise,
@@ -15,9 +18,25 @@ import {
 // Transfers are hidden for now. The transfer_staff RPCs and the audit table are
 // still in the schema, so re-enabling is a UI change only. Until then an admin
 // reassigns a staff member through Edit, which does NOT write an audit row.
-type Tab = 'dashboard' | 'managers' | 'staff' | 'roles' | 'cities';
+type Tab = 'dashboard' | 'managers' | 'staff' | 'patients' | 'day' | 'month' | 'roles' | 'cities';
 
-const TABS: Tab[] = ['dashboard', 'managers', 'staff', 'roles', 'cities'];
+const TABS: Tab[] = [
+  'dashboard',
+  'managers',
+  'staff',
+  'patients',
+  'day',
+  'month',
+  'roles',
+  'cities',
+];
+
+/** Tab keys whose label is not just the humanised key. */
+const TAB_LABELS: Partial<Record<Tab, string>> = {
+  patients: 'Patients & rates',
+  day: 'Day sheet',
+  month: 'Monthly bills',
+};
 
 type ManagerForm = {
   full_name: string;
@@ -283,7 +302,7 @@ export default function AdminPortal() {
             className={`tab ${tab === key ? 'active' : ''}`}
             onClick={() => setTab(key)}
           >
-            {humanise(key)}
+            {TAB_LABELS[key] ?? humanise(key)}
             {key === 'managers' && ` (${managers.length})`}
             {key === 'staff' && ` (${staff.length})`}
             {key === 'roles' && ` (${activeRoles.length})`}
@@ -306,6 +325,17 @@ export default function AdminPortal() {
       )}
 
       {loading && <p className="muted">Loading…</p>}
+
+      {/* Admin scope: every city's patients, days and money, not one team's. */}
+      {tab === 'patients' && (
+        <PatientsPanel scope={{ kind: 'admin' }} onError={setError} onNotice={setNotice} />
+      )}
+      {tab === 'day' && (
+        <AttendancePanel scope={{ kind: 'admin' }} onError={setError} onNotice={setNotice} />
+      )}
+      {tab === 'month' && (
+        <MonthlyPanel scope={{ kind: 'admin' }} onError={setError} onNotice={setNotice} />
+      )}
 
       {/* ------------------------------------------------------- dashboard */}
       {!loading && tab === 'dashboard' && dashboard && (

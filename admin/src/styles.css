@@ -391,7 +391,8 @@ table tbody tr:hover {
 }
 
 .form-group input,
-.form-group select {
+.form-group select,
+.form-group textarea {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--gray-300);
@@ -401,7 +402,8 @@ table tbody tr:hover {
 }
 
 .form-group input:focus,
-.form-group select:focus {
+.form-group select:focus,
+.form-group textarea:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(14, 124, 102, 0.1);
@@ -741,4 +743,264 @@ code {
   border-radius: 4px;
   padding: 1px 6px;
   font-size: 12px;
+}
+
+/* ---------------------------------------------------------------------------
+   Patients, care assignments and rates
+   --------------------------------------------------------------------------- */
+
+.row-selected {
+  background: var(--gray-100);
+}
+
+.stat-bad {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.modal-wide {
+  max-width: 720px;
+}
+
+.assignment-card {
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.assignment-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.assignment-head strong {
+  margin-right: 10px;
+}
+
+.assignment-head p {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+/* One chip per priced service type. Margin is shown because it is the number
+   that tells a manager whether the rate is set correctly. */
+.rate-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.rate-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--gray-100);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.rate-chip-label {
+  font-weight: 600;
+  color: var(--gray-900);
+}
+
+.rate-input {
+  width: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--gray-300);
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------------------
+   Staff check-in — used one-handed on a phone, so the action is a full-width
+   target and the state is readable at a glance.
+   --------------------------------------------------------------------------- */
+
+.visit-card {
+  border: 1px solid var(--gray-200);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+
+.visit-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.visit-head h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.visit-head p {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.visit-phone {
+  font-size: 14px;
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.visit-times {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.type-choice {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+
+.chip {
+  border: 1px solid var(--gray-300);
+  background: white;
+  border-radius: 20px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.chip-on {
+  border-color: var(--role-a, var(--primary));
+  background: var(--gray-100);
+  font-weight: 600;
+}
+
+.btn-checkin,
+.btn-checkout {
+  width: 100%;
+  margin-top: 14px;
+  padding: 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 17px;
+  font-weight: 600;
+  font-family: inherit;
+  color: white;
+  cursor: pointer;
+}
+
+.btn-checkin {
+  background: linear-gradient(135deg, var(--role-a, var(--primary)), var(--role-b, var(--primary-light)));
+}
+
+.btn-checkout {
+  background: var(--gray-700);
+}
+
+.btn-checkin:disabled,
+.btn-checkout:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------------------
+   Day sheet — a whole day edited in place, then submitted in one go
+   --------------------------------------------------------------------------- */
+
+.row-unrecorded td {
+  background: #fffbeb;
+}
+
+.cell-select,
+.cell-time {
+  padding: 6px 8px;
+  border: 1px solid var(--gray-300);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background: white;
+}
+
+.cell-select:disabled,
+.cell-time:disabled {
+  background: var(--gray-100);
+  color: var(--gray-500);
+}
+
+.approve {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.day-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--gray-200);
+}
+
+.day-actions .muted {
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------------------
+   Monthly bills
+   --------------------------------------------------------------------------- */
+
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--gray-900);
+  cursor: pointer;
+  text-align: left;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.breakdown-cell {
+  background: var(--gray-100);
+  padding: 12px 24px;
+}
+
+.breakdown {
+  width: auto;
+  min-width: 60%;
+}
+
+.breakdown td {
+  border-bottom: none;
+  padding: 6px 16px 6px 0;
+  font-size: 13px;
+}
+
+.breakdown tbody tr:hover {
+  background: transparent;
 }
