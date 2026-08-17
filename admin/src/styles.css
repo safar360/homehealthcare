@@ -3,10 +3,14 @@
   --primary-light: #10b981;
   --danger: #ef4444;
   --warning: #f59e0b;
+  /* gray-50 and gray-600 were referenced by table headers, row hover and the
+     filter bar but never defined, so those surfaces resolved to nothing. */
+  --gray-50: #f9fafb;
   --gray-100: #f3f4f6;
   --gray-200: #e5e7eb;
   --gray-300: #d1d5db;
   --gray-500: #6b7280;
+  --gray-600: #4b5563;
   --gray-700: #374151;
   --gray-900: #111827;
   --blue: #0e7cff;
@@ -652,14 +656,45 @@ table tbody tr:hover {
    admin teal, manager indigo, staff amber. Set on .app-shell via data-role.
    --------------------------------------------------------------------------- */
 
-.app-shell[data-role='admin']   { --role-a: #0e7c66; --role-b: #10b981; --role-name: 'Admin'; }
-.app-shell[data-role='manager'] { --role-a: #4338ca; --role-b: #6366f1; }
-.app-shell[data-role='staff']   { --role-a: #b45309; --role-b: #f59e0b; }
+.app-shell[data-role='admin'] {
+  --role-a: #0e7c66;
+  --role-b: #10b981;
+  --role-name: 'Admin';
+  /* Deep teal — the widest view, so the calmest ground. */
+  --role-bg: linear-gradient(165deg, #ecfdf5 0%, #ccfbf1 38%, #99f6e4 100%);
+}
 
-/* The bar across the top of the page is the main carrier of the role colour. */
+.app-shell[data-role='manager'] {
+  --role-a: #4338ca;
+  --role-b: #6366f1;
+  /* Indigo — clearly not the admin's screen at a glance. */
+  --role-bg: linear-gradient(165deg, #eef2ff 0%, #e0e7ff 38%, #c7d2fe 100%);
+}
+
+.app-shell[data-role='staff'] {
+  --role-a: #b45309;
+  --role-b: #f59e0b;
+  /* Amber, deliberately the most saturated of the three: this one is read on a
+     cheap phone in daylight, where a pale wash disappears. */
+  --role-bg: linear-gradient(165deg, #fffbeb 0%, #fde68a 38%, #fbbf24 100%);
+}
+
+/* The whole page carries the role colour, not just the top bar. A fixed
+   pseudo-element rather than a background on .app-shell, which is a centred
+   column and would leave the margins grey. */
 .app-shell[data-role] {
   position: relative;
   padding-top: 32px;
+}
+
+.app-shell[data-role]::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(1100px 520px at 12% -8%, rgb(255 255 255 / 75%), transparent 62%),
+    var(--role-bg);
 }
 
 .app-shell[data-role]::before {
