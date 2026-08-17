@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 import AttendancePanel from './AttendancePanel';
 import MonthlyPanel from './MonthlyPanel';
 import PatientsPanel from './PatientsPanel';
+import { isEnabled } from './lib/features';
 import {
   AVAILABILITY_STATUSES,
   humanise,
@@ -36,6 +37,16 @@ const emptyForm: StaffForm = {
   experience_years: '0',
   availability_status: 'available',
 };
+
+// A hidden screen is hidden, not forbidden — RLS is what actually protects the
+// data. These flags only control the rollout.
+const visibleTabs: Tab[] = [
+  'overview',
+  'staff',
+  ...(isEnabled('patients') ? (['patients'] as Tab[]) : []),
+  ...(isEnabled('daySheet') ? (['day'] as Tab[]) : []),
+  ...(isEnabled('monthlyBills') ? (['month'] as Tab[]) : []),
+];
 
 export default function ManagerPortal({ profile }: { profile: Profile }) {
   const [tab, setTab] = useState<Tab>('overview');
@@ -219,7 +230,7 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
       </section>
 
       <nav className="tabs">
-        {(['overview', 'staff', 'patients', 'day', 'month'] as Tab[]).map((key) => (
+        {visibleTabs.map((key) => (
           <button
             key={key}
             type="button"
@@ -285,7 +296,7 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
         </div>
       )}
 
-      {tab === 'patients' && (
+      {tab === 'patients' && isEnabled('patients') && (
         <PatientsPanel
           scope={{ kind: 'manager', managerId: manager.id, citySlug: manager.city_slug }}
           onError={setError}
@@ -293,7 +304,7 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
         />
       )}
 
-      {tab === 'day' && (
+      {tab === 'day' && isEnabled('daySheet') && (
         <AttendancePanel
           scope={{ kind: 'manager', managerId: manager.id, citySlug: manager.city_slug }}
           onError={setError}
@@ -301,7 +312,7 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
         />
       )}
 
-      {tab === 'month' && (
+      {tab === 'month' && isEnabled('monthlyBills') && (
         <MonthlyPanel
           scope={{ kind: 'manager', managerId: manager.id, citySlug: manager.city_slug }}
           onError={setError}

@@ -71,7 +71,25 @@ jobs:
           PUBLIC_BASE: /${{ github.event.repository.name }}/ops/
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Phase 2 screens, rolled out one at a time. Set these in
+          # Settings -> Secrets and variables -> Actions -> Variables, to "on".
+          # Unset means off. Changing one needs this workflow re-run, because
+          # the value is baked into the bundle.
+          VITE_FEATURE_PATIENTS: ${{ vars.VITE_FEATURE_PATIENTS }}
+          VITE_FEATURE_DAY_SHEET: ${{ vars.VITE_FEATURE_DAY_SHEET }}
+          VITE_FEATURE_MONTHLY_BILLS: ${{ vars.VITE_FEATURE_MONTHLY_BILLS }}
         run: npm run build
+
+      - name: Report which screens this build ships
+        env:
+          P: ${{ vars.VITE_FEATURE_PATIENTS }}
+          D: ${{ vars.VITE_FEATURE_DAY_SHEET }}
+          M: ${{ vars.VITE_FEATURE_MONTHLY_BILLS }}
+        run: |
+          on() { case "$(echo "$1" | tr 'A-Z' 'a-z')" in on|1|true|yes) echo on ;; *) echo off ;; esac; }
+          echo "Patients & rates : $(on "$P")"
+          echo "Day sheet        : $(on "$D")"
+          echo "Monthly bills    : $(on "$M")"
 
       # --------------------------------------------------------------- assemble
       - name: Assemble the site

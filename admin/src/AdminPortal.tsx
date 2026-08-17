@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 import AttendancePanel from './AttendancePanel';
 import MonthlyPanel from './MonthlyPanel';
 import PatientsPanel from './PatientsPanel';
+import { isEnabled } from './lib/features';
 import {
   AVAILABILITY_STATUSES,
   humanise,
@@ -20,13 +21,15 @@ import {
 // reassigns a staff member through Edit, which does NOT write an audit row.
 type Tab = 'dashboard' | 'managers' | 'staff' | 'patients' | 'day' | 'month' | 'roles' | 'cities';
 
+// The Phase 2 screens roll out one at a time. A hidden tab is hidden, not
+// forbidden — RLS is what actually protects the data.
 const TABS: Tab[] = [
   'dashboard',
   'managers',
   'staff',
-  'patients',
-  'day',
-  'month',
+  ...(isEnabled('patients') ? (['patients'] as Tab[]) : []),
+  ...(isEnabled('daySheet') ? (['day'] as Tab[]) : []),
+  ...(isEnabled('monthlyBills') ? (['month'] as Tab[]) : []),
   'roles',
   'cities',
 ];
@@ -327,13 +330,13 @@ export default function AdminPortal() {
       {loading && <p className="muted">Loading…</p>}
 
       {/* Admin scope: every city's patients, days and money, not one team's. */}
-      {tab === 'patients' && (
+      {tab === 'patients' && isEnabled('patients') && (
         <PatientsPanel scope={{ kind: 'admin' }} onError={setError} onNotice={setNotice} />
       )}
-      {tab === 'day' && (
+      {tab === 'day' && isEnabled('daySheet') && (
         <AttendancePanel scope={{ kind: 'admin' }} onError={setError} onNotice={setNotice} />
       )}
-      {tab === 'month' && (
+      {tab === 'month' && isEnabled('monthlyBills') && (
         <MonthlyPanel scope={{ kind: 'admin' }} onError={setError} onNotice={setNotice} />
       )}
 
