@@ -97,10 +97,38 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # GitHub's own deployment API returns 503 often enough that two deploys of
+      # an unchanged, already-built artifact have failed on it. The build is
+      # fine by this point, so a transient server error should not cost a whole
+      # run -- try up to three times, waiting for the outage to pass.
       - id: deployment
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait, then retry the deployment
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 60
+
+      - id: retry1
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+
+      - name: Wait, then retry once more
+        if: steps.deployment.outcome == 'failure' && steps.retry1.outcome == 'failure'
+        run: sleep 120
+
+      - id: retry2
+        if: steps.deployment.outcome == 'failure' && steps.retry1.outcome == 'failure'
         uses: actions/deploy-pages@v4
 
       - name: Show the URLs
+        env:
+          # Whichever attempt succeeded is the one that carries the URL.
+          PAGE_URL: >-
+            ${{ steps.deployment.outputs.page_url
+                || steps.retry1.outputs.page_url
+                || steps.retry2.outputs.page_url }}
         run: |
-          echo "Patient app : ${{ steps.deployment.outputs.page_url }}"
-          echo "Ops portal  : ${{ steps.deployment.outputs.page_url }}ops/"
+          echo "Patient app : $PAGE_URL"
+          echo "Ops portal  : ${PAGE_URL}ops/"
