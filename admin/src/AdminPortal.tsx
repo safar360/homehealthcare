@@ -4,6 +4,7 @@ import AttendancePanel from './AttendancePanel';
 import MonthlyPanel from './MonthlyPanel';
 import PatientsPanel from './PatientsPanel';
 import { isEnabled } from './lib/features';
+import { provisionLogin, type ProvisionResult } from './lib/auth';
 import {
   AVAILABILITY_STATUSES,
   humanise,
@@ -88,6 +89,9 @@ export default function AdminPortal() {
   const [tab, setTab] = useState<Tab>('dashboard');
   const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [managers, setManagers] = useState<ManagerWithCount[]>([]);
+  const [hasLogin, setHasLogin] = useState<Set<string>>(new Set());
+  const [credential, setCredential] = useState<ProvisionResult | null>(null);
+  const [provisioning, setProvisioning] = useState<string | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [roles, setRoles] = useState<StaffRoleRow[]>([]);
@@ -113,16 +117,21 @@ export default function AdminPortal() {
     setLoading(true);
     setError(null);
 
-    const [citiesRes, rolesRes, dashRes, managersRes, staffRes] = await Promise.all([
+    const [citiesRes, rolesRes, dashRes, managersRes, staffRes, linkedRes] = await Promise.all([
       supabase.from('cities').select('*').order('sort_order'),
       supabase.from('staff_roles').select('*').order('sort_order'),
       supabase.rpc('get_admin_dashboard_summary'),
       supabase.rpc('get_managers_with_staff_count'),
       supabase.from('location_staff').select('*').eq('is_active', true).order('full_name'),
+      // The staff-count RPC does not return user_id, and this screen needs to
+      // know who already has a login before it offers to create one.
+      supabase.from('location_managers').select('id, user_id').eq('is_active', true),
     ]);
 
     // supabase-js resolves with an { error } field rather than throwing.
-    const failure = [citiesRes, rolesRes, dashRes, managersRes, staffRes].find((r) => r.error);
+    const failure = [citiesRes, rolesRes, dashRes, managersRes, staffRes, linkedRes].find(
+      (r) => r.error
+    );
     if (failure?.error) setError(failure.error.message);
 
     setCities((citiesRes.data as City[]) ?? []);
@@ -130,12 +139,60 @@ export default function AdminPortal() {
     setDashboard((dashRes.data as DashboardSummary) ?? null);
     setManagers((managersRes.data as ManagerWithCount[]) ?? []);
     setStaff((staffRes.data as Staff[]) ?? []);
+    setHasLogin(
+      new Set(
+        ((linkedRes.data as { id: string; user_id: string | null }[]) ?? [])
+          .filter((r) => r.user_id)
+          .map((r) => r.id)
+      )
+    );
     setLoading(false);
   }, []);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  /**
+   * Create, reset or revoke a portal login. The password comes back once, from
+   * the server, and is never stored anywhere the admin can look it up again —
+   * so it is shown in a dialog they have to dismiss deliberately.
+   */
+  const manageLogin = async (
+    action: 'create' | 'reset' | 'revoke',
+    kind: 'manager' | 'staff',
+    recordId: string,
+    fullName: string
+  ) => {
+    if (action === 'revoke') {
+      const ok = window.confirm(
+        `Revoke ${fullName}'s login?\n\nThey will not be able to sign in. Their name stays on every record they have already touched.`
+      );
+      if (!ok) return;
+    }
+    if (action === 'reset') {
+      const ok = window.confirm(
+        `Reset ${fullName}'s password?\n\nTheir current password stops working immediately and you will need to read them the new one.`
+      );
+      if (!ok) return;
+    }
+
+    setProvisioning(recordId);
+    setError(null);
+    const { data, error: failed } = await provisionLogin({ action, kind, recordId });
+    setProvisioning(null);
+
+    if (failed) {
+      setError(failed);
+      return;
+    }
+    if (data?.password) {
+      setCredential(data);
+    } else {
+      setNotice(`${fullName}'s login has been revoked.`);
+    }
+    await load();
+  };
 
   const managerNameById = useMemo(() => {
     const m = new Map<string, string>();
@@ -460,6 +517,34 @@ export default function AdminPortal() {
                           });
                         }}
                       >Edit</button>
+                      {hasLogin.has(m.id) ? (
+                        <>
+                          <button
+                            className="btn-small"
+                            type="button"
+                            disabled={provisioning === m.id}
+                            onClick={() => manageLogin('reset', 'manager', m.id, m.full_name)}
+                          >{provisioning === m.id ? '…' : 'Reset password'}</button>
+                          <button
+                            className="btn-danger-small"
+                            type="button"
+                            disabled={provisioning === m.id}
+                            onClick={() => manageLogin('revoke', 'manager', m.id, m.full_name)}
+                          >Revoke login</button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn-small"
+                          type="button"
+                          disabled={provisioning === m.id}
+                          title={
+                            m.phone_number
+                              ? 'Create a portal login for this manager'
+                              : 'Add their mobile number first — it is what they sign in with'
+                          }
+                          onClick={() => manageLogin('create', 'manager', m.id, m.full_name)}
+                        >{provisioning === m.id ? 'Creating…' : 'Create login'}</button>
+                      )}
                       <button
                         className="btn-danger-small"
                         type="button"
@@ -709,6 +794,51 @@ export default function AdminPortal() {
       )}
 
       {/* ---------------------------------------------------------- modals */}
+      {credential && (
+        <div className="modal-overlay" role="dialog" aria-modal="true">
+          <div className="modal">
+            <h2>{credential.action === 'create' ? 'Login created' : 'Password reset'}</h2>
+            <p className="muted">
+              Read these to {credential.full_name}. They will be asked to choose their own password
+              the first time they sign in.
+            </p>
+
+            <div className="credential">
+              <div>
+                <span className="credential-label">Mobile number</span>
+                <span className="credential-value">{credential.login_number}</span>
+              </div>
+              <div>
+                <span className="credential-label">Temporary password</span>
+                <span className="credential-value">{credential.password}</span>
+              </div>
+            </div>
+
+            <div className="banner banner-warn">
+              This password is shown once and is not stored anywhere. If you close this without
+              noting it down, reset it and start again.
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn-secondary"
+                type="button"
+                onClick={() =>
+                  void navigator.clipboard?.writeText(
+                    `Pari Home Healthcare portal\nMobile number: ${credential.login_number}\nTemporary password: ${credential.password}`
+                  )
+                }
+              >
+                Copy
+              </button>
+              <button className="btn-primary" type="button" onClick={() => setCredential(null)}>
+                I have noted it down
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {managerForm && (
         <Modal
           title={managerEditId ? 'Edit manager' : 'Add manager'}

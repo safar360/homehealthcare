@@ -1039,3 +1039,38 @@ code {
 .breakdown tbody tr:hover {
   background: transparent;
 }
+
+/* ---------------------------------------------------------------------------
+   One-time credential — read aloud over a phone, so it must be unambiguous
+   --------------------------------------------------------------------------- */
+
+.credential {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--gray-100);
+  border-radius: 10px;
+  padding: 18px 20px;
+  margin: 20px 0;
+}
+
+.credential-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gray-500);
+  margin-bottom: 4px;
+}
+
+.credential-value {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--gray-900);
+  user-select: all;
+  word-break: break-all;
+}

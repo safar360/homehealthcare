@@ -1,26 +1,36 @@
 import { useState, type FormEvent } from 'react';
 import { supabase } from './lib/supabase';
+import { toLoginEmail } from './lib/auth';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
-    setSubmitting(true);
     setError(null);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    // Managers and staff sign in with the mobile number they were issued; the
+    // original admin accounts still use an email. Both arrive here.
+    const email = toLoginEmail(identifier);
+    if (!email) {
+      setError('Enter your 10-digit mobile number.');
+      return;
+    }
+
+    setSubmitting(true);
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
 
     // On success the auth listener in App swaps this screen out, so there is
     // nothing to do here but surface a failure.
     if (signInError) {
-      setError(signInError.message);
+      setError(
+        /invalid login credentials/i.test(signInError.message)
+          ? 'That number and password do not match. Ask your admin to reset it if you have forgotten it.'
+          : signInError.message
+      );
       setSubmitting(false);
     }
   };
@@ -32,13 +42,15 @@ export default function LoginPage() {
         <p className="login-subtitle">Operations portal — admins, managers and staff</p>
 
         <div className="form-group">
-          <label htmlFor="email">Email</label>
+          <label htmlFor="identifier">Mobile number</label>
           <input
-            id="email"
-            type="email"
+            id="identifier"
+            type="text"
+            inputMode="tel"
             autoComplete="username"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
+            placeholder="9812345678"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
             required
           />
         </div>
@@ -62,8 +74,7 @@ export default function LoginPage() {
         </button>
 
         <p className="login-hint">
-          Accounts are created in the Supabase dashboard. Your profile role decides
-          which portal you land on.
+          Use the number your admin issued you. Forgotten your password? Your admin can reset it.
         </p>
       </form>
     </div>

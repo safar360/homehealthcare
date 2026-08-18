@@ -3,6 +3,8 @@ import type { Session } from '@supabase/supabase-js';
 import { configError, supabase } from './lib/supabase';
 import type { Profile } from './lib/types';
 import LoginPage from './LoginPage';
+import ChangePassword from './ChangePassword';
+import { mustChangePassword } from './lib/auth';
 import AdminPortal from './AdminPortal';
 import ManagerPortal from './ManagerPortal';
 import StaffPortal from './StaffPortal';
@@ -99,6 +101,20 @@ export default function App() {
   }
 
   if (!session) return <LoginPage />;
+
+  // A temporary password was read out loud or written down to get here. Nothing
+  // else in the portal opens until it has been replaced.
+  if (mustChangePassword(session.user.user_metadata)) {
+    return (
+      <ChangePassword
+        name={String(session.user.user_metadata?.full_name ?? '')}
+        onDone={() => {
+          void supabase.auth.getSession().then(({ data }) => setSession(data.session));
+        }}
+        onSignOut={signOut}
+      />
+    );
+  }
 
   if (profileError || !profile) {
     return (
