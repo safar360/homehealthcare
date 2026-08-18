@@ -38,6 +38,14 @@ function tenDigits(raw: string | null): string {
   return digits.length >= 10 ? digits.slice(-10) : '';
 }
 
+/**
+ * Where a retired login's address goes, so the number it held becomes free
+ * again. Timestamped because the same number may be retired more than once.
+ */
+function archivedEmail(digits: string): string {
+  return `${digits}.retired.${Date.now()}@${LOGIN_DOMAIN}`;
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -132,8 +140,24 @@ Deno.serve(async (req: Request) => {
 
     // Banned rather than deleted: their name stays on every record they
     // touched, and the audit trail stays readable.
-    await admin.auth.admin.updateUserById(record.user_id, { ban_duration: '876000h' });
-    await admin.from('profiles').update({ role: 'patient' }).eq('id', record.user_id);
+    //
+    // The address is archived at the same time. A company number gets reissued
+    // — to the same person after a mistaken revoke, or to whoever replaces
+    // them — and an account still holding it would block that forever. Renaming
+    // frees the number without merging two people's history into one account.
+    const archived = archivedEmail(digits || record.user_id);
+
+    await admin.auth.admin.updateUserById(record.user_id, {
+      email: archived,
+      email_confirm: true,
+      ban_duration: '876000h',
+    });
+    // profiles.email is unique and mirrors the auth address; leaving it behind
+    // would collide with the next login issued for this number.
+    await admin
+      .from('profiles')
+      .update({ role: 'patient', email: archived })
+      .eq('id', record.user_id);
     await admin.from(table).update({ user_id: null }).eq('id', recordId);
 
     return json({ ok: true, action: 'revoke', full_name: record.full_name });
@@ -170,6 +194,43 @@ Deno.serve(async (req: Request) => {
       { error: `${record.full_name} already has a login. Use Reset password instead.` },
       409
     );
+  }
+
+  // An account may already hold this address — from a revoke done before
+  // revoke archived the address, or from a record that was deleted outright.
+  // If nothing points at it any more it is stale, and holding the number
+  // hostage helps nobody. profiles.email mirrors the auth address and is
+  // unique, so it is the cheapest way to find one.
+  const { data: squatter } = await admin
+    .from('profiles')
+    .select('id')
+    .eq('email', loginEmail)
+    .maybeSingle();
+
+  if (squatter) {
+    const [linkedManager, linkedStaff] = await Promise.all([
+      admin.from('location_managers').select('full_name').eq('user_id', squatter.id).maybeSingle(),
+      admin.from('location_staff').select('full_name').eq('user_id', squatter.id).maybeSingle(),
+    ]);
+    const owner = linkedManager.data?.full_name ?? linkedStaff.data?.full_name;
+
+    if (owner) {
+      return json(
+        {
+          error: `The number ${digits} is already the login for ${owner}. Each person needs their own number.`,
+        },
+        409
+      );
+    }
+
+    // Orphaned: retire it and carry on rather than making an admin dig it out.
+    const archived = archivedEmail(digits);
+    await admin.auth.admin.updateUserById(squatter.id, {
+      email: archived,
+      email_confirm: true,
+      ban_duration: '876000h',
+    });
+    await admin.from('profiles').update({ email: archived, role: 'patient' }).eq('id', squatter.id);
   }
 
   const password = tempPassword();

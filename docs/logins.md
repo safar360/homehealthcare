@@ -95,7 +95,19 @@ body — so a caller cannot provision a login against a number of their choosing
 |---|---|
 | `create` | Creates the account, sets the role, links it to the manager or staff record, returns the password once |
 | `reset` | New temporary password, forces a change on next sign-in, lifts any ban |
-| `revoke` | Bans the account, drops the profile back to `patient`, unlinks the record |
+| `revoke` | Bans the account, drops the profile back to `patient`, unlinks the record, and **archives the address** so the number is free again |
+
+**Why revoke archives the address.** A company number gets reissued — to the
+same person after a mistaken revoke, or to whoever replaces them. An account
+still holding `9812345678@pari.internal` would block that forever, and the first
+build of this did exactly that: revoke, then Create login, and the portal said
+the number was already in use with no way out. Deleting the account instead is
+worse, because it takes the person's name off every record they touched. So the
+address is renamed to `9812345678.retired.<timestamp>@pari.internal`: the number
+is free, the history stays, and two people never share one account.
+
+Creating a login also clears a stale account still sitting on the number when
+nothing points at it any more. If something does, it says whose it is.
 
 **Revoke bans rather than deletes.** The person's name stays on every record they
 touched, so the audit trail stays readable. This is the answer to a manager
