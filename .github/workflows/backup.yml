@@ -87,9 +87,24 @@ jobs:
 
           sudo apt-get update -qq
 
-          # The pgdg meta-package tracks the latest stable major.
-          sudo apt-get install -y --no-install-recommends postgresql-client
-          echo "client: $(pg_dump --version)"
+          # Ask the repository which majors it actually has rather than trusting
+          # the meta-package: on noble it resolved to 16, behind the 17.6 server.
+          LATEST=$(apt-cache search --names-only '^postgresql-client-[0-9]+$' \
+            | awk '{print $1}' | sed 's/.*-//' | sort -n | tail -1)
+          LATEST=${LATEST:-17}
+          echo "installing postgresql-client-$LATEST"
+          sudo apt-get install -y --no-install-recommends "postgresql-client-$LATEST"
+
+          # /usr/bin/pg_dump is pg_wrapper, which chooses a version on its own
+          # and happily ran 16 while 17 was installed. Put the real binaries
+          # first on PATH so the version installed above is the one that runs.
+          PGBIN=$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail -1)
+          if [ -z "$PGBIN" ]; then
+            echo "::error::No postgresql client binaries found under /usr/lib/postgresql."
+            exit 1
+          fi
+          echo "$PGBIN" >> "$GITHUB_PATH"
+          echo "client: $("$PGBIN/pg_dump" --version)"
 
       - name: Dump
         env:
@@ -97,8 +112,20 @@ jobs:
         run: |
           # Record both versions. A future "server version mismatch" is then
           # self-explanatory in the log instead of needing a rerun to diagnose.
+          echo "which:  $(command -v pg_dump)"
           echo "client: $(pg_dump --version)"
-          echo "server: $(psql "$DB_URL" -tAc 'show server_version' 2>/dev/null || echo 'could not read')"
+          server=$(psql "$DB_URL" -tAc 'show server_version' 2>/dev/null || echo '')
+          echo "server: ${server:-could not read}"
+
+          # Fail with the actual numbers rather than pg_dump's terser message.
+          if [ -n "$server" ]; then
+            cmaj=$(pg_dump --version | grep -oE '[0-9]+' | head -1)
+            smaj=${server%%.*}
+            if [ "$cmaj" -lt "$smaj" ]; then
+              echo "::error::pg_dump is major $cmaj but the server is major $smaj. A newer client is needed; the install step picks the newest the pgdg repo offers, so that major is not published yet."
+              exit 1
+            fi
+          fi
 
           # Custom format (-Fc) so pg_restore can be selective on the way back.
           # Ownership and grants are Supabase-managed, so they are left out.
