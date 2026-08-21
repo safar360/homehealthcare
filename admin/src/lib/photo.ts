@@ -96,7 +96,7 @@ export async function uploadAvatar(
     return {
       path: null,
       error: /bucket not found/i.test(error.message)
-        ? 'Photo storage is not set up yet — docs/patch-phase3-docs-photos.sql needs running.'
+        ? 'Photo storage is not set up yet — docs/patch-phase3-photos.sql needs running.'
         : error.message,
     };
   }

@@ -84,7 +84,7 @@ export default function DocumentsModal({
     if (typeRes.error) {
       onError(
         /does not exist|schema cache/i.test(typeRes.error.message)
-          ? 'Document tracking needs docs/patch-phase3-docs-photos.sql to be run on the database.'
+          ? 'Document tracking needs docs/patch-phase3-docs.sql to be run on the database.'
           : typeRes.error.message
       );
       setLoading(false);

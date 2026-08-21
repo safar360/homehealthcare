@@ -1,4 +1,4 @@
--- Staff document verification, and photos for staff and managers.
+-- Part 1 of 2: staff document verification.
 --
 -- Two deliberate omissions, both about liability rather than effort:
 --
@@ -12,6 +12,33 @@
 --     readable by anyone who learns the URL.
 --
 -- Safe to re-run.
+
+-- ---------------------------------------------------------------------------
+-- 0. Preflight — fail with a useful message rather than "function does not exist"
+-- ---------------------------------------------------------------------------
+
+do $$
+declare
+  missing text := '';
+begin
+  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname = 'public' and p.proname = 'is_admin' and p.pronargs = 0)
+    then missing := missing || ' public.is_admin()'; end if;
+  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname = 'public' and p.proname = 'is_staff' and p.pronargs = 0)
+    then missing := missing || ' public.is_staff()'; end if;
+  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname = 'public' and p.proname = 'current_manager_id' and p.pronargs = 0)
+    then missing := missing || ' public.current_manager_id()'; end if;
+  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname = 'public' and p.proname = 'request_role' and p.pronargs = 0)
+    then missing := missing || ' public.request_role()'; end if;
+
+  if missing <> '' then
+    raise exception 'Missing helper functions:%. Run supabase-schema.sql first.', missing;
+  end if;
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 1. Document types  (admin-managed, same pattern as cities and staff roles)
@@ -202,81 +229,25 @@ $$;
 
 revoke execute on function public.verify_document(uuid, boolean, text) from anon;
 
--- ---------------------------------------------------------------------------
--- 3. Photos
--- ---------------------------------------------------------------------------
-
-alter table public.location_staff    add column if not exists photo_path text;
-alter table public.location_managers add column if not exists photo_path text;
-
--- A private bucket, capped at 256 KB per object and images only. The client
--- resizes before upload, but the ceiling is enforced here too -- a client-side
--- limit is a courtesy, not a control.
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('avatars', 'avatars', false, 262144, array['image/jpeg', 'image/webp'])
-on conflict (id) do update
-  set public = false,
-      file_size_limit = 262144,
-      allowed_mime_types = array['image/jpeg', 'image/webp'];
-
-drop policy if exists "avatars_read" on storage.objects;
-create policy "avatars_read" on storage.objects
-  for select using (bucket_id = 'avatars' and public.is_staff());
-
-drop policy if exists "avatars_insert" on storage.objects;
-create policy "avatars_insert" on storage.objects
-  for insert with check (
-    bucket_id = 'avatars'
-    and (public.is_admin() or public.current_manager_id() is not null)
-  );
-
-drop policy if exists "avatars_update" on storage.objects;
-create policy "avatars_update" on storage.objects
-  for update using (
-    bucket_id = 'avatars'
-    and (public.is_admin() or public.current_manager_id() is not null)
-  );
-
-drop policy if exists "avatars_delete" on storage.objects;
-create policy "avatars_delete" on storage.objects
-  for delete using (
-    bucket_id = 'avatars'
-    and (public.is_admin() or public.current_manager_id() is not null)
-  );
+--
 
 -- ---------------------------------------------------------------------------
--- 4. Self-test
+-- Self-test
 -- ---------------------------------------------------------------------------
 
 do $$
-declare
-  v_bucket record;
 begin
   if not exists (select 1 from pg_trigger
                  where tgname = 'guard_staff_document_update' and not tgisinternal) then
     raise exception 'guard_staff_document_update is not installed';
   end if;
-
   if not exists (select 1 from pg_trigger
                  where tgname = 'reset_verification_on_link_change' and not tgisinternal) then
     raise exception 'reset_verification_on_link_change is not installed';
   end if;
-
-  select * into v_bucket from storage.buckets where id = 'avatars';
-  if not found then
-    raise exception 'avatars bucket was not created';
-  end if;
-  if v_bucket.public then
-    raise exception 'avatars bucket is public; staff photographs must not be world-readable';
-  end if;
-  if coalesce(v_bucket.file_size_limit, 0) > 262144 then
-    raise exception 'avatars bucket size ceiling is higher than 256 KB';
-  end if;
-
   if (select count(*) from public.document_types where is_active) < 5 then
     raise exception 'document types were not seeded';
   end if;
-
-  raise notice 'Documents and photos ready. Bucket is private, capped at 256 KB.';
+  raise notice 'Part 1 done: document types, staff_documents, admin-only verification.';
 end;
 $$;
