@@ -261,6 +261,64 @@ export function prettyPhone(raw: string | null | undefined): string {
   return `+${cc} ${last10.slice(0, 5)} ${last10.slice(5)}`;
 }
 
+export type PhoneCheck = {
+  ok: boolean;
+  /** Normalised as +91XXXXXXXXXX, ready to store. Null when blank or invalid. */
+  e164: string | null;
+  reason: string | null;
+};
+
+/**
+ * Validates an Indian mobile number on entry.
+ *
+ * Ten digits beginning 6, 7, 8 or 9 — the mobile series in India. Landline STD
+ * numbers are deliberately rejected: this number is what a manager signs in
+ * with and what a colleague taps to call, so it has to be a mobile.
+ *
+ * Accepts what people actually type — +91, 91, a leading 0, spaces, dashes,
+ * brackets — and normalises all of it to one stored form, so the same person
+ * cannot end up in the system twice under two spellings of one number.
+ */
+export function checkIndianMobile(raw: string, options: { required?: boolean } = {}): PhoneCheck {
+  const trimmed = (raw ?? '').trim();
+
+  if (!trimmed) {
+    return options.required
+      ? { ok: false, e164: null, reason: 'A mobile number is needed.' }
+      : { ok: true, e164: null, reason: null };
+  }
+
+  if (/[^\d\s+()-]/.test(trimmed)) {
+    return { ok: false, e164: null, reason: 'Use digits only — no letters or symbols.' };
+  }
+
+  let digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 12 && digits.startsWith('91')) digits = digits.slice(2);
+  else if (digits.length === 13 && digits.startsWith('091')) digits = digits.slice(3);
+  else if (digits.length === 11 && digits.startsWith('0')) digits = digits.slice(1);
+
+  if (digits.length !== 10) {
+    return {
+      ok: false,
+      e164: null,
+      reason:
+        digits.length < 10
+          ? `An Indian mobile number has 10 digits — that is ${digits.length}.`
+          : `An Indian mobile number has 10 digits — that is ${digits.length}.`,
+    };
+  }
+
+  if (!/^[6-9]/.test(digits)) {
+    return {
+      ok: false,
+      e164: null,
+      reason: `An Indian mobile number starts with 6, 7, 8 or 9 — that one starts with ${digits[0]}.`,
+    };
+  }
+
+  return { ok: true, e164: `+91${digits}`, reason: null };
+}
+
 /** "care_coordinator" -> "Care coordinator" */
 export function humanise(value: string): string {
   const spaced = value.replace(/_/g, ' ');

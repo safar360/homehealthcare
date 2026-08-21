@@ -4,9 +4,11 @@ import AttendancePanel from './AttendancePanel';
 import MonthlyPanel from './MonthlyPanel';
 import PatientsPanel from './PatientsPanel';
 import PersonCard from './PersonCard';
+import PhoneField from './PhoneField';
 import { isEnabled } from './lib/features';
 import {
   AVAILABILITY_STATUSES,
+  checkIndianMobile,
   humanise,
   splitList,
   type Manager,
@@ -146,11 +148,16 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
       setError('A staff member needs a name.');
       return;
     }
+    const phone = checkIndianMobile(form.phone_number);
+    if (!phone.ok) {
+      setError(`Mobile number: ${phone.reason}`);
+      return;
+    }
 
     const payload = {
       full_name: form.full_name.trim(),
       email: form.email.trim() || null,
-      phone_number: form.phone_number.trim() || null,
+      phone_number: phone.e164,
       staff_role: form.staff_role,
       assigned_location: form.assigned_location.trim() || null,
       qualifications: splitList(form.qualifications),
@@ -448,13 +455,13 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
             <ManagerField label="Email">
               <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </ManagerField>
-            <ManagerField label="Phone">
-              <input
-                type="tel"
-                value={form.phone_number}
-                onChange={(e) => setForm({ ...form, phone_number: e.target.value })}
-              />
-            </ManagerField>
+            <PhoneField
+              label="Mobile number"
+              id="team-phone"
+              value={form.phone_number}
+              onChange={(v) => setForm({ ...form, phone_number: v })}
+              hint="How you and the patient's family reach them."
+            />
             <ManagerField label="Role">
               <select value={form.staff_role} onChange={(e) => setForm({ ...form, staff_role: e.target.value })}>
                 {roles.map((r) => (

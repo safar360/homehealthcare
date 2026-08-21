@@ -4,10 +4,12 @@ import AttendancePanel from './AttendancePanel';
 import MonthlyPanel from './MonthlyPanel';
 import PatientsPanel from './PatientsPanel';
 import PersonCard from './PersonCard';
+import PhoneField from './PhoneField';
 import { isEnabled } from './lib/features';
 import { provisionLogin, type ProvisionResult } from './lib/auth';
 import {
   AVAILABILITY_STATUSES,
+  checkIndianMobile,
   humanise,
   slugify,
   splitList,
@@ -236,10 +238,15 @@ export default function AdminPortal() {
       setError('A manager needs at least a name and a city.');
       return;
     }
+    const managerPhone = checkIndianMobile(managerForm.phone_number);
+    if (!managerPhone.ok) {
+      setError(`Mobile number: ${managerPhone.reason}`);
+      return;
+    }
     const payload = {
       full_name: managerForm.full_name.trim(),
       email: managerForm.email.trim() || null,
-      phone_number: managerForm.phone_number.trim() || null,
+      phone_number: managerPhone.e164,
       city_slug: managerForm.city_slug,
       managed_locations: splitList(managerForm.managed_locations),
       updated_at: new Date().toISOString(),
@@ -259,10 +266,15 @@ export default function AdminPortal() {
       setError('A staff member needs a name, a city and a role.');
       return;
     }
+    const staffPhone = checkIndianMobile(staffForm.phone_number);
+    if (!staffPhone.ok) {
+      setError(`Mobile number: ${staffPhone.reason}`);
+      return;
+    }
     const payload = {
       full_name: staffForm.full_name.trim(),
       email: staffForm.email.trim() || null,
-      phone_number: staffForm.phone_number.trim() || null,
+      phone_number: staffPhone.e164,
       city_slug: staffForm.city_slug,
       staff_role: staffForm.staff_role,
       assigned_manager_id: staffForm.assigned_manager_id || null,
@@ -310,11 +322,16 @@ export default function AdminPortal() {
     const slug = cityEditSlug ?? (cityForm.slug.trim() || slugify(name.split(',')[0]));
     if (!slug) { setError('Could not derive an identifier from that name.'); return; }
 
+    const support = checkIndianMobile(cityForm.support_phone);
+    if (!support.ok) { setError(`Support phone: ${support.reason}`); return; }
+    const whatsapp = checkIndianMobile(cityForm.whatsapp_number);
+    if (!whatsapp.ok) { setError(`WhatsApp number: ${whatsapp.reason}`); return; }
+
     const payload = {
       slug,
       name,
-      support_phone: cityForm.support_phone.trim() || null,
-      whatsapp_number: cityForm.whatsapp_number.trim() || null,
+      support_phone: support.e164,
+      whatsapp_number: whatsapp.e164,
       sort_order: Number(cityForm.sort_order) || 0,
     };
     const { error: e } = cityEditSlug
@@ -865,10 +882,13 @@ export default function AdminPortal() {
             <input type="email" value={managerForm.email}
               onChange={(e) => setManagerForm({ ...managerForm, email: e.target.value })} />
           </Field>
-          <Field label="Phone">
-            <input type="tel" value={managerForm.phone_number}
-              onChange={(e) => setManagerForm({ ...managerForm, phone_number: e.target.value })} />
-          </Field>
+          <PhoneField
+            label="Mobile number"
+            id="manager-phone"
+            value={managerForm.phone_number}
+            onChange={(v) => setManagerForm({ ...managerForm, phone_number: v })}
+            hint="This is what they sign in with, and what colleagues tap to call."
+          />
           <Field label="City" required>
             <select value={managerForm.city_slug}
               onChange={(e) => setManagerForm({ ...managerForm, city_slug: e.target.value })}>
@@ -899,10 +919,13 @@ export default function AdminPortal() {
             <input type="email" value={staffForm.email}
               onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} />
           </Field>
-          <Field label="Phone">
-            <input type="tel" value={staffForm.phone_number}
-              onChange={(e) => setStaffForm({ ...staffForm, phone_number: e.target.value })} />
-          </Field>
+          <PhoneField
+            label="Mobile number"
+            id="staff-phone"
+            value={staffForm.phone_number}
+            onChange={(v) => setStaffForm({ ...staffForm, phone_number: v })}
+            hint="Used to call them, and to sign in once staff logins are issued."
+          />
           <Field label="City" required>
             <select value={staffForm.city_slug}
               onChange={(e) => setStaffForm({ ...staffForm, city_slug: e.target.value })}>
@@ -1004,14 +1027,18 @@ export default function AdminPortal() {
               and orders reference it.
             </p>
           )}
-          <Field label="Support phone">
-            <input type="tel" value={cityForm.support_phone} placeholder="+919999999999"
-              onChange={(e) => setCityForm({ ...cityForm, support_phone: e.target.value })} />
-          </Field>
-          <Field label="WhatsApp number">
-            <input type="tel" value={cityForm.whatsapp_number} placeholder="+919999999999"
-              onChange={(e) => setCityForm({ ...cityForm, whatsapp_number: e.target.value })} />
-          </Field>
+          <PhoneField
+            label="Support phone"
+            id="city-support"
+            value={cityForm.support_phone}
+            onChange={(v) => setCityForm({ ...cityForm, support_phone: v })}
+          />
+          <PhoneField
+            label="WhatsApp number"
+            id="city-whatsapp"
+            value={cityForm.whatsapp_number}
+            onChange={(v) => setCityForm({ ...cityForm, whatsapp_number: v })}
+          />
           <Field label="Sort order">
             <input type="number" value={cityForm.sort_order}
               onChange={(e) => setCityForm({ ...cityForm, sort_order: e.target.value })} />

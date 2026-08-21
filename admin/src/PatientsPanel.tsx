@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from './lib/supabase';
+import PhoneField from './PhoneField';
 import {
   ASSIGNMENT_STATUSES,
   PATIENT_STATUSES,
+  checkIndianMobile,
   humanise,
   inr,
   today,
@@ -192,10 +194,23 @@ export default function PatientsPanel({
       return;
     }
 
+    const phone = checkIndianMobile(patientForm.phone_number);
+    if (!phone.ok) {
+      onError(`Mobile number: ${phone.reason}`);
+      return;
+    }
+    const altPhone = checkIndianMobile(patientForm.alt_phone);
+    if (!altPhone.ok) {
+      onError(`Alternate mobile: ${altPhone.reason}`);
+      return;
+    }
+
     const payload: Record<string, unknown> = {
       full_name: patientForm.full_name.trim(),
-      phone_number: patientForm.phone_number.trim() || null,
-      alt_phone: patientForm.alt_phone.trim() || null,
+      // Stored normalised, so one person cannot appear twice under two
+      // spellings of the same number.
+      phone_number: phone.e164,
+      alt_phone: altPhone.e164,
       address: patientForm.address.trim() || null,
       area: patientForm.area.trim() || null,
       status: patientForm.status,
@@ -540,21 +555,18 @@ export default function PatientsPanel({
                 onChange={(e) => setPatientForm({ ...patientForm, full_name: e.target.value })}
               />
             </Field>
-            <Field label="Phone">
-              <input
-                type="tel"
-                value={patientForm.phone_number}
-                onChange={(e) => setPatientForm({ ...patientForm, phone_number: e.target.value })}
-                placeholder="+91…"
-              />
-            </Field>
-            <Field label="Alternate phone">
-              <input
-                type="tel"
-                value={patientForm.alt_phone}
-                onChange={(e) => setPatientForm({ ...patientForm, alt_phone: e.target.value })}
-              />
-            </Field>
+            <PhoneField
+              label="Mobile number"
+              id="patient-phone"
+              value={patientForm.phone_number}
+              onChange={(v) => setPatientForm({ ...patientForm, phone_number: v })}
+            />
+            <PhoneField
+              label="Alternate mobile"
+              id="patient-alt-phone"
+              value={patientForm.alt_phone}
+              onChange={(v) => setPatientForm({ ...patientForm, alt_phone: v })}
+            />
             <Field label="Address">
               <textarea
                 rows={2}
