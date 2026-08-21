@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 import AttendancePanel from './AttendancePanel';
 import MonthlyPanel from './MonthlyPanel';
 import PatientsPanel from './PatientsPanel';
+import PersonCard from './PersonCard';
 import { isEnabled } from './lib/features';
 import {
   AVAILABILITY_STATUSES,
@@ -368,87 +369,66 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
             </button>
           </div>
 
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Contact</th>
-                  <th>Role</th>
-                  <th>Location</th>
-                  <th>Status</th>
-                  <th>Qualifications</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.full_name}</td>
-                    <td>
-                      {s.email ?? '—'}
-                      <br />
-                      <span className="muted">{s.phone_number ?? ''}</span>
-                    </td>
-                    <td>
-                      <span className="badge badge-role">
-                        {roles.find((r) => r.slug === s.staff_role)?.label ?? humanise(s.staff_role)}
-                      </span>
-                    </td>
-                    <td>{s.assigned_location ?? '—'}</td>
-                    <td>
-                      <span
-                        className={`status ${s.availability_status === 'available' ? 'active' : 'inactive'}`}
-                      >
-                        {humanise(s.availability_status)}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="qualifications">
-                        {s.qualifications.map((q) => (
-                          <span key={q} className="qual-tag">
-                            {q}
-                          </span>
-                        ))}
-                        {s.qualifications.length === 0 && '—'}
-                      </div>
-                    </td>
-                    <td className="actions">
-                      <button
-                        className="btn-small"
-                        type="button"
-                        onClick={() => {
-                          setEditId(s.id);
-                          setForm({
-                            full_name: s.full_name,
-                            email: s.email ?? '',
-                            phone_number: s.phone_number ?? '',
-                            staff_role: s.staff_role,
-                            assigned_location: s.assigned_location ?? '',
-                            qualifications: s.qualifications.join(', '),
-                            experience_years: String(s.experience_years ?? 0),
-                            availability_status: s.availability_status,
-                          });
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button className="btn-danger-small" type="button" onClick={() => deactivate(s)}>
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {filtered.length === 0 && (
-              <div className="no-data">
-                {staff.length === 0
-                  ? 'No staff on your team yet. Use "Add staff" to begin.'
-                  : 'No staff match these filters.'}
-              </div>
-            )}
+          <div className="person-grid">
+            {filtered.map((s) => (
+              <PersonCard
+                key={s.id}
+                name={s.full_name}
+                badge={
+                  <span className="badge badge-role">
+                    {roles.find((r) => r.slug === s.staff_role)?.label ?? humanise(s.staff_role)}
+                  </span>
+                }
+                meta={s.assigned_location ?? 'No area set'}
+                phone={s.phone_number}
+                email={s.email}
+                status={{
+                  label: humanise(s.availability_status),
+                  ok: s.availability_status === 'available',
+                }}
+                facts={[
+                  { label: 'Experience', value: `${s.experience_years} yr` },
+                  {
+                    label: 'Qualifications',
+                    value: s.qualifications.length ? s.qualifications.join(', ') : '—',
+                  },
+                ]}
+                actions={
+                  <>
+                    <button
+                      className="btn-small"
+                      type="button"
+                      onClick={() => {
+                        setEditId(s.id);
+                        setForm({
+                          full_name: s.full_name,
+                          email: s.email ?? '',
+                          phone_number: s.phone_number ?? '',
+                          staff_role: s.staff_role,
+                          assigned_location: s.assigned_location ?? '',
+                          qualifications: s.qualifications.join(', '),
+                          experience_years: String(s.experience_years ?? 0),
+                          availability_status: s.availability_status,
+                        });
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button className="btn-danger-small" type="button" onClick={() => deactivate(s)}>
+                      Remove
+                    </button>
+                  </>
+                }
+              />
+            ))}
           </div>
+          {filtered.length === 0 && (
+            <div className="no-data">
+              {staff.length === 0
+                ? 'No staff on your team yet. Use "Add staff" to begin.'
+                : 'No staff match these filters.'}
+            </div>
+          )}
 
           <p className="muted">
             Moving someone to another manager or city is an admin action — ask an admin to run the

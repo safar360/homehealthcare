@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 import AttendancePanel from './AttendancePanel';
 import MonthlyPanel from './MonthlyPanel';
 import PatientsPanel from './PatientsPanel';
+import PersonCard from './PersonCard';
 import { isEnabled } from './lib/features';
 import { provisionLogin, type ProvisionResult } from './lib/auth';
 import {
@@ -485,24 +486,33 @@ export default function AdminPortal() {
               + Add manager
             </button>
           </div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th><th>Email</th><th>Phone</th><th>City</th>
-                  <th>Areas</th><th>Staff</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {managers.map((m) => (
-                  <tr key={m.id}>
-                    <td>{m.full_name}</td>
-                    <td>{m.email ?? '—'}</td>
-                    <td>{m.phone_number ?? '—'}</td>
-                    <td>{cityNameBySlug.get(m.city_slug ?? '') ?? m.city_slug ?? '—'}</td>
-                    <td>{m.managed_locations.join(', ') || '—'}</td>
-                    <td>{m.staff_count}</td>
-                    <td className="actions">
+          <div className="person-grid">
+            {managers.map((m) => (
+              <PersonCard
+                key={m.id}
+                name={m.full_name}
+                badge={
+                  <span className="badge">
+                    {cityNameBySlug.get(m.city_slug ?? '') ?? m.city_slug ?? 'No city'}
+                  </span>
+                }
+                meta={m.managed_locations.join(', ') || 'All areas'}
+                phone={m.phone_number}
+                email={m.email}
+                status={
+                  hasLogin.has(m.id)
+                    ? { label: 'Can sign in', ok: true }
+                    : { label: 'No login', ok: false }
+                }
+                facts={[
+                  { label: 'Staff', value: m.staff_count },
+                  {
+                    label: 'Portal access',
+                    value: hasLogin.has(m.id) ? 'Active' : 'Not issued',
+                  },
+                ]}
+                actions={
+                  <>
                       <button
                         className="btn-small"
                         type="button"
@@ -545,18 +555,17 @@ export default function AdminPortal() {
                           onClick={() => manageLogin('create', 'manager', m.id, m.full_name)}
                         >{provisioning === m.id ? 'Creating…' : 'Create login'}</button>
                       )}
-                      <button
-                        className="btn-danger-small"
-                        type="button"
-                        onClick={() => deactivate('location_managers', m.id, m.full_name)}
-                      >Deactivate</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {managers.length === 0 && <div className="no-data">No managers yet.</div>}
+                    <button
+                      className="btn-danger-small"
+                      type="button"
+                      onClick={() => deactivate('location_managers', m.id, m.full_name)}
+                    >Deactivate</button>
+                  </>
+                }
+              />
+            ))}
           </div>
+          {managers.length === 0 && <div className="no-data">No managers yet.</div>}
         </section>
       )}
 
@@ -601,73 +610,76 @@ export default function AdminPortal() {
             >Clear</button>
           </div>
 
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th><th>Contact</th><th>Role</th><th>City</th>
-                  <th>Area</th><th>Manager</th><th>Status</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredStaff.map((s) => (
-                  <tr key={s.id}>
-                    <td>{s.full_name}</td>
-                    <td>
-                      {s.email ?? '—'}<br />
-                      <span className="muted">{s.phone_number ?? ''}</span>
-                    </td>
-                    <td>
-                      <span className="badge badge-role">
-                        {roleLabelBySlug.get(s.staff_role) ?? humanise(s.staff_role)}
-                      </span>
-                    </td>
-                    <td>{cityNameBySlug.get(s.city_slug ?? '') ?? s.city_slug ?? '—'}</td>
-                    <td>{s.assigned_location ?? <span className="muted">—</span>}</td>
-                    <td>
-                      {s.assigned_manager_id
-                        ? managerNameById.get(s.assigned_manager_id) ?? 'Unknown'
-                        : <span className="cell-warn">Unassigned</span>}
-                    </td>
-                    <td>
-                      <span className={`status ${s.availability_status === 'available' ? 'active' : 'inactive'}`}>
-                        {humanise(s.availability_status)}
-                      </span>
-                    </td>
-                    <td className="actions">
-                      <button
-                        className="btn-small" type="button"
-                        onClick={() => {
-                          setStaffEditId(s.id);
-                          setStaffForm({
-                            full_name: s.full_name,
-                            email: s.email ?? '',
-                            phone_number: s.phone_number ?? '',
-                            city_slug: s.city_slug ?? '',
-                            staff_role: s.staff_role,
-                            assigned_manager_id: s.assigned_manager_id ?? '',
-                            assigned_location: s.assigned_location ?? '',
-                            qualifications: s.qualifications.join(', '),
-                            experience_years: String(s.experience_years ?? 0),
-                            availability_status: s.availability_status,
-                          });
-                        }}
-                      >Edit</button>
-                      <button
-                        className="btn-danger-small" type="button"
-                        onClick={() => deactivate('location_staff', s.id, s.full_name)}
-                      >Deactivate</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {filteredStaff.length === 0 && (
-              <div className="no-data">
-                {staff.length === 0 ? 'No staff yet.' : 'No staff match these filters.'}
-              </div>
-            )}
+          <div className="person-grid">
+            {filteredStaff.map((s) => (
+              <PersonCard
+                key={s.id}
+                name={s.full_name}
+                badge={
+                  <span className="badge badge-role">
+                    {roleLabelBySlug.get(s.staff_role) ?? humanise(s.staff_role)}
+                  </span>
+                }
+                meta={
+                  <>
+                    {cityNameBySlug.get(s.city_slug ?? '') ?? s.city_slug ?? 'No city'}
+                    {s.assigned_location ? ` · ${s.assigned_location}` : ''}
+                  </>
+                }
+                phone={s.phone_number}
+                email={s.email}
+                status={{
+                  label: humanise(s.availability_status),
+                  ok: s.availability_status === 'available',
+                }}
+                warn={s.assigned_manager_id ? null : 'No manager assigned'}
+                facts={[
+                  {
+                    label: 'Manager',
+                    value: s.assigned_manager_id
+                      ? managerNameById.get(s.assigned_manager_id) ?? 'Unknown'
+                      : '—',
+                  },
+                  { label: 'Experience', value: `${s.experience_years} yr` },
+                  {
+                    label: 'Qualifications',
+                    value: s.qualifications.length ? s.qualifications.join(', ') : '—',
+                  },
+                ]}
+                actions={
+                  <>
+                    <button
+                      className="btn-small" type="button"
+                      onClick={() => {
+                        setStaffEditId(s.id);
+                        setStaffForm({
+                          full_name: s.full_name,
+                          email: s.email ?? '',
+                          phone_number: s.phone_number ?? '',
+                          city_slug: s.city_slug ?? '',
+                          staff_role: s.staff_role,
+                          assigned_manager_id: s.assigned_manager_id ?? '',
+                          assigned_location: s.assigned_location ?? '',
+                          qualifications: s.qualifications.join(', '),
+                          experience_years: String(s.experience_years ?? 0),
+                          availability_status: s.availability_status,
+                        });
+                      }}
+                    >Edit</button>
+                    <button
+                      className="btn-danger-small" type="button"
+                      onClick={() => deactivate('location_staff', s.id, s.full_name)}
+                    >Deactivate</button>
+                  </>
+                }
+              />
+            ))}
           </div>
+          {filteredStaff.length === 0 && (
+            <div className="no-data">
+              {staff.length === 0 ? 'No staff yet.' : 'No staff match these filters.'}
+            </div>
+          )}
         </section>
       )}
 

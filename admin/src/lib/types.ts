@@ -236,6 +236,31 @@ export const AVAILABILITY_STATUSES: AvailabilityStatus[] = [
   'training',
 ];
 
+/**
+ * A dialable tel: target, or null when the number is too short to call.
+ * A bare 10-digit number is assumed Indian, which is what every number in this
+ * system is.
+ */
+export function telHref(raw: string | null | undefined): string | null {
+  const cleaned = (raw ?? '').replace(/[^\d+]/g, '');
+  const digits = cleaned.replace(/\D/g, '');
+  if (digits.length < 10) return null;
+  if (cleaned.startsWith('+')) return `tel:${cleaned}`;
+  if (digits.length === 10) return `tel:+91${digits}`;
+  return `tel:+${digits}`;
+}
+
+/** "+919812345678" -> "+91 98123 45678". Left alone if it is not dialable. */
+export function prettyPhone(raw: string | null | undefined): string {
+  const cleaned = (raw ?? '').replace(/[^\d+]/g, '');
+  if (!cleaned) return '';
+  const digits = cleaned.replace(/\D/g, '');
+  if (digits.length < 10) return cleaned;
+  const last10 = digits.slice(-10);
+  const cc = digits.slice(0, -10) || '91';
+  return `+${cc} ${last10.slice(0, 5)} ${last10.slice(5)}`;
+}
+
 /** "care_coordinator" -> "Care coordinator" */
 export function humanise(value: string): string {
   const spaced = value.replace(/_/g, ' ');

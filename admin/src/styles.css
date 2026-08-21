@@ -1074,3 +1074,139 @@ code {
   user-select: all;
   word-break: break-all;
 }
+
+/* ---------------------------------------------------------------------------
+   People as cards — the number is the action, not a field
+   --------------------------------------------------------------------------- */
+
+.person-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 18px;
+}
+
+.person-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: white;
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 5%);
+}
+
+.person-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.person-name {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.person-meta {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--gray-500);
+}
+
+.person-warn {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--warning);
+}
+
+/* A full-width tap target: this gets used one-handed, on a phone, often while
+   already walking somewhere. */
+.call-cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--role-a, var(--primary)), var(--role-b, var(--primary-light)));
+  color: white;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  transition: filter 0.15s;
+}
+
+.call-cta:hover {
+  filter: brightness(1.08);
+}
+
+.call-number {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.call-word {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+
+/* Nothing to dial: same shape so the card does not jump, but plainly inert. */
+.call-cta-off {
+  background: var(--gray-100);
+  color: var(--gray-500);
+}
+
+.call-cta-off .call-number {
+  font-weight: 500;
+  font-size: 13.5px;
+}
+
+.person-email {
+  font-size: 13px;
+  color: var(--blue);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.person-email:hover {
+  text-decoration: underline;
+}
+
+.person-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 10px 14px;
+  margin: 2px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--gray-100);
+}
+
+.person-facts dt {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--gray-500);
+  margin-bottom: 2px;
+}
+
+.person-facts dd {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--gray-900);
+}
+
+.person-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--gray-100);
+}
