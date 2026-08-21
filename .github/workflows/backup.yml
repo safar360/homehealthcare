@@ -42,6 +42,25 @@ jobs:
             *) echo "::warning::Unrecognised connection string; continuing." ;;
           esac
 
+          # A password containing '@' silently breaks URI parsing: '@' separates
+          # the credentials from the host, so libpq splits in the wrong place and
+          # reports "could not translate host name <password>@<host>" -- which
+          # also prints the password into a log. Catch it here, where nothing is
+          # echoed, rather than letting pg_dump leak it.
+          after_scheme="${DB_URL#*://}"
+          at_count=$(printf '%s' "$after_scheme" | tr -cd '@' | wc -c | tr -d ' ')
+          if [ "$at_count" -gt 1 ]; then
+            echo "::error::The password in SUPABASE_DB_URL contains an unencoded '@' (or another reserved character), so the host cannot be parsed. Reset the database password to letters and digits only, or percent-encode it: @ becomes %40, ! becomes %21, # becomes %23."
+            exit 1
+          fi
+
+          host_part="${after_scheme##*@}"
+          case "$host_part" in
+            *[!a-zA-Z0-9.:/_-]*)
+              echo "::error::The host portion of SUPABASE_DB_URL contains characters that cannot appear in a hostname, which usually means the password needs percent-encoding. Reset the database password to letters and digits only."
+              exit 1 ;;
+          esac
+
       # Ubuntu ships an older client, and pg_dump refuses to dump a newer
       # server. Install the client matching Supabase's Postgres major version.
       - name: Install postgresql-client 17
