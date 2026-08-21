@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { prettyPhone, telHref } from './lib/types';
+import { initials } from './lib/photo';
 
 /**
  * One person — manager or staff — as a card rather than a table row.
@@ -19,6 +20,7 @@ export default function PersonCard({
   facts,
   warn,
   actions,
+  photoUrl,
 }: {
   name: string;
   status?: { label: string; ok: boolean };
@@ -29,15 +31,25 @@ export default function PersonCard({
   facts?: { label: string; value: ReactNode }[];
   warn?: string | null;
   actions?: ReactNode;
+  photoUrl?: string | null;
 }) {
   const href = telHref(phone);
 
   return (
     <article className="person-card">
       <div className="person-head">
-        <div>
-          <h3 className="person-name">{name}</h3>
-          {badge}
+        <div className="person-ident">
+          <div className="avatar">
+            {photoUrl ? (
+              <img src={photoUrl} alt="" loading="lazy" />
+            ) : (
+              <span className="avatar-initials">{initials(name)}</span>
+            )}
+          </div>
+          <div>
+            <h3 className="person-name">{name}</h3>
+            {badge}
+          </div>
         </div>
         {status && (
           <span className={`status ${status.ok ? 'active' : 'inactive'}`}>{status.label}</span>

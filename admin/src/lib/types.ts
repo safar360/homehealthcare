@@ -26,6 +26,7 @@ export type Manager = {
   phone_number: string | null;
   city_slug: string | null;
   managed_locations: string[];
+  photo_path: string | null;
   is_active: boolean;
 };
 
@@ -58,6 +59,7 @@ export type Staff = {
   qualifications: string[];
   experience_years: number;
   availability_status: AvailabilityStatus;
+  photo_path: string | null;
   is_active: boolean;
   created_at: string;
 };

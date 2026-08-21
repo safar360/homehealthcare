@@ -5,6 +5,9 @@ import MonthlyPanel from './MonthlyPanel';
 import PatientsPanel from './PatientsPanel';
 import PersonCard from './PersonCard';
 import PhoneField from './PhoneField';
+import PhotoPicker from './PhotoPicker';
+import DocumentsModal from './DocumentsModal';
+import { signAvatars } from './lib/photo';
 import { isEnabled } from './lib/features';
 import {
   AVAILABILITY_STATUSES,
@@ -64,6 +67,8 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
   const [filterStatus, setFilterStatus] = useState('');
   const [form, setForm] = useState<StaffForm | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
+  const [avatars, setAvatars] = useState<Map<string, string>>(new Map());
+  const [docsFor, setDocsFor] = useState<{ id: string; name: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -108,7 +113,9 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
       .order('full_name');
 
     if (staffError) setError(staffError.message);
-    setStaff((staffRows as Staff[]) ?? []);
+    const team = (staffRows as Staff[]) ?? [];
+    setStaff(team);
+    setAvatars(await signAvatars(team.map((s) => s.photo_path)));
     setLoading(false);
   }, [profile.id]);
 
@@ -381,6 +388,7 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
               <PersonCard
                 key={s.id}
                 name={s.full_name}
+                photoUrl={avatars.get(s.photo_path ?? '') ?? null}
                 badge={
                   <span className="badge badge-role">
                     {roles.find((r) => r.slug === s.staff_role)?.label ?? humanise(s.staff_role)}
@@ -402,6 +410,13 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
                 ]}
                 actions={
                   <>
+                    <button
+                      className="btn-small"
+                      type="button"
+                      onClick={() => setDocsFor({ id: s.id, name: s.full_name })}
+                    >
+                      Documents
+                    </button>
                     <button
                       className="btn-small"
                       type="button"
@@ -444,6 +459,18 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
         </section>
       )}
 
+      {docsFor && (
+        <DocumentsModal
+          staffId={docsFor.id}
+          staffName={docsFor.name}
+          isAdmin={false}
+          onClose={() => setDocsFor(null)}
+          onError={setError}
+          onNotice={setNotice}
+          onChanged={() => void load()}
+        />
+      )}
+
       {form && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal">
@@ -455,6 +482,23 @@ export default function ManagerPortal({ profile }: { profile: Profile }) {
             <ManagerField label="Email">
               <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
             </ManagerField>
+            <PhotoPicker
+              owner="staff"
+              id={editId}
+              name={form.full_name || 'this staff member'}
+              path={editId ? staff.find((x) => x.id === editId)?.photo_path ?? null : null}
+              signedUrl={avatars.get(staff.find((x) => x.id === editId)?.photo_path ?? '') ?? null}
+              onError={(m) => m && setError(m)}
+              onChange={async (next) => {
+                if (!editId) return;
+                const { error: e } = await supabase
+                  .from('location_staff')
+                  .update({ photo_path: next })
+                  .eq('id', editId);
+                if (e) setError(e.message);
+                else await load();
+              }}
+            />
             <PhoneField
               label="Mobile number"
               id="team-phone"

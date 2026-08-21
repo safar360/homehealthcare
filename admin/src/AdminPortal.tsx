@@ -5,6 +5,9 @@ import MonthlyPanel from './MonthlyPanel';
 import PatientsPanel from './PatientsPanel';
 import PersonCard from './PersonCard';
 import PhoneField from './PhoneField';
+import PhotoPicker from './PhotoPicker';
+import DocumentsModal from './DocumentsModal';
+import { signAvatars } from './lib/photo';
 import { isEnabled } from './lib/features';
 import { provisionLogin, type ProvisionResult } from './lib/auth';
 import {
@@ -95,6 +98,10 @@ export default function AdminPortal() {
   const [hasLogin, setHasLogin] = useState<Set<string>>(new Set());
   const [credential, setCredential] = useState<ProvisionResult | null>(null);
   const [provisioning, setProvisioning] = useState<string | null>(null);
+  const [avatars, setAvatars] = useState<Map<string, string>>(new Map());
+  const [docCounts, setDocCounts] = useState<Map<string, { total: number; verified: number }>>(new Map());
+  const [docsFor, setDocsFor] = useState<{ id: string; name: string } | null>(null);
+  const [managerPhoto, setManagerPhoto] = useState<Map<string, string | null>>(new Map());
   const [staff, setStaff] = useState<Staff[]>([]);
   const [cities, setCities] = useState<City[]>([]);
   const [roles, setRoles] = useState<StaffRoleRow[]>([]);
@@ -126,9 +133,9 @@ export default function AdminPortal() {
       supabase.rpc('get_admin_dashboard_summary'),
       supabase.rpc('get_managers_with_staff_count'),
       supabase.from('location_staff').select('*').eq('is_active', true).order('full_name'),
-      // The staff-count RPC does not return user_id, and this screen needs to
-      // know who already has a login before it offers to create one.
-      supabase.from('location_managers').select('id, user_id').eq('is_active', true),
+      // The staff-count RPC does not return user_id or photo_path, and this
+      // screen needs both before it can offer a login or show a face.
+      supabase.from('location_managers').select('id, user_id, photo_path').eq('is_active', true),
     ]);
 
     // supabase-js resolves with an { error } field rather than throwing.
@@ -149,6 +156,32 @@ export default function AdminPortal() {
           .map((r) => r.id)
       )
     );
+    // Photographs live in a private bucket, so every visible one is signed in a
+    // single request rather than one round trip per card.
+    const managerRows =
+      (linkedRes.data as { id: string; user_id: string | null; photo_path: string | null }[]) ?? [];
+    const staffRows = (staffRes.data as Staff[]) ?? [];
+    setAvatars(
+      await signAvatars([
+        ...managerRows.map((m) => m.photo_path),
+        ...staffRows.map((s) => s.photo_path),
+      ])
+    );
+    setManagerPhoto(new Map(managerRows.map((m) => [m.id, m.photo_path])));
+
+    // Documents are optional: a project without the patch simply shows none.
+    const { data: docRows } = await supabase
+      .from('staff_documents')
+      .select('staff_id, is_verified');
+    const counts = new Map<string, { total: number; verified: number }>();
+    for (const d of (docRows as { staff_id: string; is_verified: boolean }[]) ?? []) {
+      const c = counts.get(d.staff_id) ?? { total: 0, verified: 0 };
+      c.total += 1;
+      if (d.is_verified) c.verified += 1;
+      counts.set(d.staff_id, c);
+    }
+    setDocCounts(counts);
+
     setLoading(false);
   }, []);
 
@@ -508,6 +541,7 @@ export default function AdminPortal() {
               <PersonCard
                 key={m.id}
                 name={m.full_name}
+                photoUrl={avatars.get(managerPhoto.get(m.id) ?? '') ?? null}
                 badge={
                   <span className="badge">
                     {cityNameBySlug.get(m.city_slug ?? '') ?? m.city_slug ?? 'No city'}
@@ -632,6 +666,7 @@ export default function AdminPortal() {
               <PersonCard
                 key={s.id}
                 name={s.full_name}
+                photoUrl={avatars.get(s.photo_path ?? '') ?? null}
                 badge={
                   <span className="badge badge-role">
                     {roleLabelBySlug.get(s.staff_role) ?? humanise(s.staff_role)}
@@ -662,9 +697,27 @@ export default function AdminPortal() {
                     label: 'Qualifications',
                     value: s.qualifications.length ? s.qualifications.join(', ') : '—',
                   },
+                  {
+                    label: 'Documents',
+                    value: (() => {
+                      const c = docCounts.get(s.id);
+                      if (!c || c.total === 0) return <span className="cell-warn">None</span>;
+                      return c.verified === c.total ? (
+                        <span className="doc-ok">All {c.total} verified</span>
+                      ) : (
+                        <span className="cell-warn">
+                          {c.verified} of {c.total} verified
+                        </span>
+                      );
+                    })(),
+                  },
                 ]}
                 actions={
                   <>
+                    <button
+                      className="btn-small" type="button"
+                      onClick={() => setDocsFor({ id: s.id, name: s.full_name })}
+                    >Documents</button>
                     <button
                       className="btn-small" type="button"
                       onClick={() => {
@@ -823,6 +876,18 @@ export default function AdminPortal() {
       )}
 
       {/* ---------------------------------------------------------- modals */}
+      {docsFor && (
+        <DocumentsModal
+          staffId={docsFor.id}
+          staffName={docsFor.name}
+          isAdmin
+          onClose={() => setDocsFor(null)}
+          onError={setError}
+          onNotice={setNotice}
+          onChanged={() => void load()}
+        />
+      )}
+
       {credential && (
         <div className="modal-overlay" role="dialog" aria-modal="true">
           <div className="modal">
@@ -882,6 +947,23 @@ export default function AdminPortal() {
             <input type="email" value={managerForm.email}
               onChange={(e) => setManagerForm({ ...managerForm, email: e.target.value })} />
           </Field>
+          <PhotoPicker
+            owner="manager"
+            id={managerEditId}
+            name={managerForm.full_name || 'this manager'}
+            path={managerEditId ? managerPhoto.get(managerEditId) ?? null : null}
+            signedUrl={avatars.get(managerPhoto.get(managerEditId ?? '') ?? '') ?? null}
+            onError={(m) => m && setError(m)}
+            onChange={async (next) => {
+              if (!managerEditId) return;
+              const { error: e } = await supabase
+                .from('location_managers')
+                .update({ photo_path: next })
+                .eq('id', managerEditId);
+              if (e) setError(e.message);
+              else await load();
+            }}
+          />
           <PhoneField
             label="Mobile number"
             id="manager-phone"
@@ -919,6 +1001,25 @@ export default function AdminPortal() {
             <input type="email" value={staffForm.email}
               onChange={(e) => setStaffForm({ ...staffForm, email: e.target.value })} />
           </Field>
+          <PhotoPicker
+            owner="staff"
+            id={staffEditId}
+            name={staffForm.full_name || 'this staff member'}
+            path={staffEditId ? staff.find((x) => x.id === staffEditId)?.photo_path ?? null : null}
+            signedUrl={
+              avatars.get(staff.find((x) => x.id === staffEditId)?.photo_path ?? '') ?? null
+            }
+            onError={(m) => m && setError(m)}
+            onChange={async (next) => {
+              if (!staffEditId) return;
+              const { error: e } = await supabase
+                .from('location_staff')
+                .update({ photo_path: next })
+                .eq('id', staffEditId);
+              if (e) setError(e.message);
+              else await load();
+            }}
+          />
           <PhoneField
             label="Mobile number"
             id="staff-phone"
