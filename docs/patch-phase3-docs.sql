@@ -14,6 +14,24 @@
 -- Safe to re-run.
 
 -- ---------------------------------------------------------------------------
+-- 0. Are we in the right database?
+--
+-- "relation ... does not exist" and "function ... does not exist" both mean
+-- this most of the time: the SQL editor is on a different project. Say so
+-- plainly instead of failing forty lines later on a foreign key.
+-- ---------------------------------------------------------------------------
+
+do $$
+begin
+  if to_regclass('public.location_staff') is null
+     or to_regclass('public.location_managers') is null then
+    raise exception
+      'This is not the Pari Home Healthcare database — public.location_staff is missing. Check the project selector: the SQL editor URL should contain htgydovsseqeshwnxazm.';
+  end if;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- 0. Preflight — fail with a useful message rather than "function does not exist"
 -- ---------------------------------------------------------------------------
 
