@@ -46,11 +46,22 @@ jobs:
       # server. Install the client matching Supabase's Postgres major version.
       - name: Install postgresql-client 17
         run: |
+          set -euo pipefail
+
+          KEYRING=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
           sudo install -d /usr/share/postgresql-common/pgdg
+
+          # --batch --yes matters: the runner image already ships the pgdg
+          # keyring, so without them gpg asks "File exists. Overwrite?" on
+          # /dev/tty, which does not exist in CI. It then dies, curl loses the
+          # pipe it was writing into, and the step fails with a misleading
+          # "curl: (23) Failure writing output".
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-            | sudo gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo gpg --dearmor --batch --yes -o "$KEYRING"
+
+          echo "deb [signed-by=$KEYRING] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends postgresql-client-17
           pg_dump --version
@@ -82,7 +93,10 @@ jobs:
           # The dump holds staff -- and later patient -- personal data, and this
           # repository is public, so artifacts are downloadable by anyone. It
           # never leaves the runner unencrypted.
-          gpg --batch --yes --symmetric \
+          # --pinentry-mode loopback is required as well as --batch: GnuPG 2.1+
+          # otherwise ignores --passphrase and tries to prompt through pinentry,
+          # which has no terminal to prompt on in CI.
+          gpg --batch --yes --pinentry-mode loopback --symmetric \
             --cipher-algo AES256 \
             --s2k-mode 3 --s2k-digest-algo SHA512 --s2k-count 65011712 \
             --passphrase "$PASSPHRASE" \

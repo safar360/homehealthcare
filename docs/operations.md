@@ -92,7 +92,9 @@ GitHub → Actions → *Nightly database backup* → pick a run → download the
 
 ```bash
 unzip db-backup-<n>.zip
-gpg --batch --passphrase "$BACKUP_PASSPHRASE" \
+# --pinentry-mode loopback is needed alongside --batch on GnuPG 2.1+, which
+# otherwise ignores --passphrase and tries to prompt on a terminal.
+gpg --batch --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" \
     --output dump.pgc --decrypt backup-2026-08-14.pgc.gpg
 pg_restore --list dump.pgc | head       # sanity check before touching anything
 ```
