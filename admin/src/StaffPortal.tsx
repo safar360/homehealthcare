@@ -327,17 +327,20 @@ export default function StaffPortal({ profile }: { profile: Profile }) {
               <h3>Days served</h3>
               <p className="stat-number">{Number(payout?.days_served ?? 0)}</p>
             </div>
-            <div className="stat-card">
+            <div className="stat-card stat-card-good">
               <h3>Earned</h3>
-              <p className="stat-number stat-good">{inr(payout?.total_payable)}</p>
+              <p className="stat-number">{inr(payout?.total_payable)}</p>
             </div>
             <div className="stat-card">
               <h3>Paid</h3>
               <p className="stat-number">{inr(payout?.paid_amount)}</p>
             </div>
-            <div className="stat-card">
+            <div className={`stat-card ${Number(payout?.balance ?? 0) > 0 ? 'stat-card-warn' : ''}`}>
               <h3>Outstanding</h3>
-              <p className="stat-number stat-warn">{inr(payout?.balance)}</p>
+              <p className="stat-number">{inr(payout?.balance)}</p>
+              <p className="stat-note">
+                {Number(payout?.balance ?? 0) > 0 ? 'Still to be paid to you' : 'All paid'}
+              </p>
             </div>
           </div>
 

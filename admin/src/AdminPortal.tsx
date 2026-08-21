@@ -461,6 +461,11 @@ export default function AdminPortal() {
               label="Unassigned staff"
               value={dashboard.unassigned_staff}
               tone={dashboard.unassigned_staff > 0 ? 'warn' : undefined}
+              note={
+                dashboard.unassigned_staff > 0
+                  ? 'Nobody manages them — assign a manager'
+                  : 'Everyone has a manager'
+              }
             />
           </div>
 
@@ -1150,11 +1155,31 @@ export default function AdminPortal() {
   );
 }
 
-function StatCard({ label, value, tone }: { label: string; value: number; tone?: 'warn' }) {
+/**
+ * One headline number.
+ *
+ * Every tile carries the portal's own colour rather than a colour of its own:
+ * these are unrelated measures, not a series, so six different hues would be
+ * decoration dressed as information. A tile only changes colour when its value
+ * *means* something — and then it says so in words too, because colour alone
+ * carries nothing to a reader who cannot see it.
+ */
+function StatCard({
+  label,
+  value,
+  tone,
+  note,
+}: {
+  label: string;
+  value: number;
+  tone?: 'warn' | 'good';
+  note?: string;
+}) {
   return (
-    <div className="stat-card">
+    <div className={`stat-card ${tone ? `stat-card-${tone}` : ''}`}>
       <h3>{label}</h3>
-      <p className={`stat-number ${tone === 'warn' ? 'stat-warn' : ''}`}>{value}</p>
+      <p className="stat-number">{value}</p>
+      {note && <p className="stat-note">{note}</p>}
     </div>
   );
 }
@@ -1162,7 +1187,7 @@ function StatCard({ label, value, tone }: { label: string; value: number; tone?:
 function BreakdownCard({ title, data }: { title: string; data?: Record<string, number> }) {
   const entries = Object.entries(data ?? {});
   return (
-    <div className="stat-card">
+    <div className="stat-card breakdown-card">
       <h3>{title}</h3>
       <div className="role-breakdown">
         {entries.map(([k, v]) => (

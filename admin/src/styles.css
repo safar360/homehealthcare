@@ -1365,3 +1365,310 @@ code {
   color: #166534;
   font-weight: 600;
 }
+
+/* ===========================================================================
+   Vibrant tiles and components
+   ---------------------------------------------------------------------------
+   Every tile carries the portal's own colour rather than one of its own. The
+   dashboard numbers are unrelated measures, not a series, so six different hues
+   would be decoration dressed as information.
+
+   A tile changes colour only when its value MEANS something — and then it
+   carries a word as well, because colour alone says nothing to a reader who
+   cannot see it.
+
+   White text is checked against BOTH ends of every gradient, not just the dark
+   one. The portal's own --role-b stops are too light to carry white text -- mint
+   #10b981 measures 2.54:1 -- so tiles use their own deeper pair:
+
+     admin    #075c4a 7.96  ->  #0b7a63 5.28
+     manager  #312e81 11.42 ->  #4f46e5 6.29
+     staff    #7c2d12 9.37  ->  #b45309 5.02
+     warning  #7c2d12 9.37  ->  #b45309 5.02
+     good     #14532d 9.11  ->  #15803d 5.02
+   =========================================================================== */
+
+.app-shell[data-role='admin']   { --tile-a: #075c4a; --tile-b: #0b7a63; }
+.app-shell[data-role='manager'] { --tile-a: #312e81; --tile-b: #4f46e5; }
+.app-shell[data-role='staff']   { --tile-a: #7c2d12; --tile-b: #b45309; }
+
+.app-shell[data-role] .stat-card {
+  background: linear-gradient(150deg, var(--tile-a), var(--tile-b));
+  border: none;
+  color: white;
+  box-shadow: 0 10px 24px rgb(0 0 0 / 14%);
+}
+
+/* Full-strength white: at 82% on the lighter stop the label drops below 4.5:1,
+   and a label nobody can read is not a subtlety. */
+.app-shell[data-role] .stat-card h3 {
+  color: #ffffff;
+  opacity: 0.92;
+}
+
+.app-shell[data-role] .stat-card .stat-number {
+  color: white;
+}
+
+.stat-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #ffffff;
+  opacity: 0.92;
+}
+
+/* Status tiles. Reserved for state, never for variety — and each one pairs its
+   colour with a note so the meaning survives without it. */
+.app-shell[data-role] .stat-card-warn {
+  background: linear-gradient(150deg, #7c2d12, #b45309);
+}
+
+.app-shell[data-role] .stat-card-good {
+  background: linear-gradient(150deg, #14532d, #15803d);
+}
+
+/* Breakdown cards stay a light surface: they hold lists of names and counts,
+   which need reading rather than glancing at. */
+.app-shell[data-role] .stat-card.breakdown-card {
+  background: white;
+  color: var(--gray-900);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 8%);
+  border: 1px solid var(--gray-200);
+}
+
+.app-shell[data-role] .stat-card.breakdown-card h3 {
+  color: var(--gray-500);
+}
+
+/* --- components ---------------------------------------------------------- */
+
+/* A coloured rail rather than a coloured fill: a person card carries dense
+   detail, and a saturated ground behind small grey text is how dashboards
+   become unreadable. */
+.app-shell[data-role] .person-card {
+  border-top: 3px solid var(--role-a);
+}
+
+.app-shell[data-role] .person-card .avatar {
+  background: linear-gradient(150deg, var(--role-a), var(--role-b));
+}
+
+.app-shell[data-role] .person-card .avatar-initials {
+  color: white;
+}
+
+.app-shell[data-role] .content-section {
+  border-top: 3px solid var(--role-a);
+}
+
+.app-shell[data-role] .assignment-card,
+.app-shell[data-role] .visit-card {
+  border-left: 3px solid var(--role-a);
+}
+
+/* ===========================================================================
+   Mobile
+   ---------------------------------------------------------------------------
+   Managers and field staff use this on a phone, in a patient's home, one
+   handed. Touch targets come before density.
+   =========================================================================== */
+
+@media (max-width: 720px) {
+  .app-shell {
+    padding: 12px;
+  }
+
+  .topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 18px 20px;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+  }
+
+  /* Tabs scroll sideways instead of wrapping into three stacked rows that
+     push the content off the screen. */
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 20px;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    flex: 0 0 auto;
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+
+  /* Two across: a single column of headline numbers means scrolling past the
+     dashboard to reach anything else. */
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    padding: 16px 14px;
+  }
+
+  .stat-card h3 {
+    font-size: 11px;
+    margin-bottom: 8px;
+  }
+
+  /* Sized so a full currency value -- Rs 14,200.00 -- still fits a half-width
+     tile rather than spilling out of it. */
+  .stat-number {
+    font-size: 22px;
+    margin-bottom: 6px;
+    overflow-wrap: anywhere;
+  }
+
+  .dashboard-grid .breakdown-card {
+    grid-column: 1 / -1;
+  }
+
+  .content-section {
+    padding: 18px 16px;
+  }
+
+  .section-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .section-header .actions {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .filters {
+    flex-direction: column;
+    padding: 12px;
+  }
+
+  .filter-input,
+  .filter-select {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .person-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Every button becomes a real touch target. 44px is the smallest reliable
+     one on a phone held in one hand. Full width suits form and section actions;
+     Sign out sits in the header and should stay the size of its label. */
+  .btn-primary,
+  .btn-secondary {
+    min-height: 44px;
+    width: 100%;
+  }
+
+  .topbar .btn-secondary,
+  .photo-buttons button,
+  .type-choice button {
+    width: auto;
+  }
+
+  .btn-small,
+  .btn-danger-small {
+    min-height: 38px;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .person-actions,
+  .actions {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  /* A dialog on a phone is a sheet: full height, and its buttons stay put at
+     the bottom instead of being scrolled away below a long form. */
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+
+  .modal {
+    max-width: none;
+    max-height: 94vh;
+    border-radius: 16px 16px 0 0;
+    padding: 22px 18px 0;
+  }
+
+  .modal h2 {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+
+  .modal-actions {
+    position: sticky;
+    bottom: 0;
+    background: white;
+    padding: 14px 0;
+    margin-top: 16px;
+    border-top: 1px solid var(--gray-200);
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+
+  .modal-actions button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .photo-picker {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .photo-buttons button {
+    width: auto;
+  }
+
+  .day-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .day-actions button {
+    width: 100%;
+  }
+
+  /* Tables that cannot become cards keep their own scroller, so the page
+     itself never moves sideways. */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 560px;
+  }
+
+  .cover-meta {
+    gap: 20px;
+  }
+}
+
+/* 390px is an ordinary phone. Only genuinely narrow screens drop to one. */
+@media (max-width: 344px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
